@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm Academic Color Palette */
+  --color-canvas: #F9F9F7;
+  --color-canvas-alt: #F0EEE6;
+  --color-ink: #181818;
+  --color-ink-muted: #87867F;
+  --color-clay: #CC785C;
+  --color-clay-hover: #B86A4E;
+
+  /* Semantic Colors */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-muted: var(--color-ink-muted);
+  --color-primary: var(--color-clay);
+  --color-primary-foreground: #FFFFFF;
+  --color-card: #FFFFFF;
+  --color-card-alt: var(--color-canvas-alt);
+  --color-border: #E8E6DC;
+
+  /* Typography */
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+
+  /* Spacing & Radius */
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+}
+
+/* Base Styles */
+html {
+  font-family: var(--font-sans);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Disable Tauri window drag on input elements */
+input, button, a, select, textarea {
+  -webkit-user-select: auto;
+}
