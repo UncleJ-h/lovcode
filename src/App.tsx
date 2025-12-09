@@ -283,7 +283,7 @@ function App() {
                 key={feature.type}
                 feature={feature}
                 active={currentFeature === feature.type}
-                onClick={() => onFeatureClick(feature.type)}
+                onClick={() => handleFeatureClick(feature.type)}
               />
             ))}
           </div>
@@ -296,7 +296,7 @@ function App() {
                 key={feature.type}
                 feature={feature}
                 active={currentFeature === feature.type}
-                onClick={() => onFeatureClick(feature.type)}
+                onClick={() => handleFeatureClick(feature.type)}
               />
             ))}
           </div>
@@ -308,7 +308,7 @@ function App() {
                 key={feature.type}
                 feature={feature}
                 active={currentFeature === feature.type}
-                onClick={() => onFeatureClick(feature.type)}
+                onClick={() => handleFeatureClick(feature.type)}
               />
             ))}
           </div>
@@ -542,24 +542,25 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
-      <h1 className="font-serif text-5xl font-bold text-ink mb-2">Lovcode</h1>
-      <p className="text-muted mb-10">Your Vibe Coding Companion</p>
+    <div className="flex flex-col items-center justify-center min-h-full px-6 py-16">
+      <h1 className="font-serif text-5xl font-bold text-primary mb-3 tracking-tight">Lovcode</h1>
+      <p className="text-muted text-lg mb-12">Your Vibe Coding Companion</p>
 
       {stats && (
-        <div className="flex gap-8 mb-10">
-          <div className="text-center">
-            <p className="text-3xl font-semibold text-ink">{stats.projects}</p>
-            <p className="text-sm text-muted">Projects</p>
-          </div>
-          <div className="text-center">
-            <p className="text-3xl font-semibold text-ink">{stats.sessions}</p>
-            <p className="text-sm text-muted">Sessions</p>
-          </div>
-          <div className="text-center">
-            <p className="text-3xl font-semibold text-ink">{stats.commands}</p>
-            <p className="text-sm text-muted">Commands</p>
-          </div>
+        <div className="flex gap-3 mb-12">
+          {[
+            { value: stats.projects, label: "Projects" },
+            { value: stats.sessions, label: "Sessions" },
+            { value: stats.commands, label: "Commands" },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="text-center px-6 py-4 bg-card rounded-2xl border border-border/60"
+            >
+              <p className="text-3xl font-semibold text-ink font-serif">{stat.value}</p>
+              <p className="text-xs text-muted uppercase tracking-wide mt-1">{stat.label}</p>
+            </div>
+          ))}
         </div>
       )}
 
@@ -567,19 +568,19 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
         {FEATURES.map((feature) => (
           <button
             key={feature.type}
-            onClick={() => onFeatureClick(feature.type)}
-            className={`flex flex-col items-center p-5 rounded-xl border transition-colors ${
+            onClick={() => handleFeatureClick(feature.type)}
+            className={`flex flex-col items-center p-6 rounded-2xl border transition-all duration-200 ${
               feature.available
-                ? "bg-card border-border hover:border-primary cursor-pointer"
-                : "bg-card/50 border-border/50"
+                ? "bg-card border-border/60 hover:border-primary hover:shadow-sm cursor-pointer"
+                : "bg-card/40 border-border/40"
             }`}
           >
-            <span className="text-3xl mb-2">{feature.icon}</span>
+            <span className="text-3xl mb-3">{feature.icon}</span>
             <span className={`text-sm font-medium ${feature.available ? "text-ink" : "text-muted"}`}>
               {feature.label}
             </span>
             {!feature.available && (
-              <span className="text-xs text-muted mt-1">Coming soon</span>
+              <span className="text-xs text-muted/70 mt-1.5 italic">Soon</span>
             )}
           </button>
         ))}
