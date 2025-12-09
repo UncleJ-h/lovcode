@@ -813,31 +813,40 @@ fn get_settings() -> Result<ClaudeSettings, String> {
     if let Some(mcp_obj) = raw.get("mcpServers").and_then(|v| v.as_object()) {
         for (name, config) in mcp_obj {
             if let Some(obj) = config.as_object() {
-                let description = obj.get("description")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let command = obj.get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let args: Vec<String> = obj.get("args")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                    .unwrap_or_default();
-                let env: HashMap<String, String> = obj.get("env")
-                    .and_then(|v| v.as_object())
-                    .map(|m| m.iter().filter_map(|(k, v)| {
-                        v.as_str().map(|s| (k.clone(), s.to_string()))
-                    }).collect())
-                    .unwrap_or_default();
+                // Handle nested mcpServers format (from some installers)
+                let actual_config = if let Some(nested) = obj.get("mcpServers").and_then(|v| v.as_object()) {
+                    nested.values().next().and_then(|v| v.as_object())
+                } else {
+                    Some(obj)
+                };
 
-                mcp_servers.push(McpServer {
-                    name: name.clone(),
-                    description,
-                    command,
-                    args,
-                    env,
-                });
+                if let Some(cfg) = actual_config {
+                    let description = cfg.get("description")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let command = cfg.get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args: Vec<String> = cfg.get("args")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        .unwrap_or_default();
+                    let env: HashMap<String, String> = cfg.get("env")
+                        .and_then(|v| v.as_object())
+                        .map(|m| m.iter().filter_map(|(k, v)| {
+                            v.as_str().map(|s| (k.clone(), s.to_string()))
+                        }).collect())
+                        .unwrap_or_default();
+
+                    mcp_servers.push(McpServer {
+                        name: name.clone(),
+                        description,
+                        command,
+                        args,
+                        env,
+                    });
+                }
             }
         }
     }
