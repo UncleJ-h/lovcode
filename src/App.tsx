@@ -315,7 +315,7 @@ function App() {
         </div>
 
         <div className="p-3 border-t border-border min-w-52">
-          <p className="text-xs text-muted">Lovcode v0.1.0</p>
+          <p className="text-xs text-muted text-center">Lovcode v0.1.0</p>
         </div>
       </aside>
 
@@ -544,7 +544,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
       <h1 className="font-serif text-5xl font-bold text-ink mb-2">Lovcode</h1>
-      <p className="text-muted mb-10">Claude Code Viewer</p>
+      <p className="text-muted mb-10">Your Vibe Coding Companion</p>
 
       {stats && (
         <div className="flex gap-8 mb-10">
