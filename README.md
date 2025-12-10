@@ -6,6 +6,8 @@ A desktop companion app for AI coding tools. Browse Claude Code chat history, ma
 ![React](https://img.shields.io/badge/React-19-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 
+![Gallery](docs/assets/gallery.png)
+
 ## Features
 
 - **Chat History Viewer** - Browse and search conversation history across all projects
