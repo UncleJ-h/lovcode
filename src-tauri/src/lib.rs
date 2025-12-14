@@ -82,37 +82,64 @@ fn get_claude_dir() -> PathBuf {
 }
 
 /// Decode project ID to actual filesystem path.
-/// Claude Code encodes: `/` -> `-`, and special chars (`.`, `@`, `-`) -> `-`
-/// So `/.` `/@` `/-` all become `--`
+/// Claude Code encodes: `/` -> `-`, and `.` -> `-`
+/// So `/.` becomes `--`, but `-` in directory names is NOT escaped
 fn decode_project_path(id: &str) -> String {
-    // Try different interpretations of `--`: could be `/-`, `/.`, or `/@`
-    let candidates = [
-        id.replace("--", "\x00").replace("-", "/").replace("\x00", "-"),   // -- means -
-        id.replace("--", "\x00").replace("-", "/").replace("\x00", "/."),  // -- means .
-        id.replace("--", "\x00").replace("-", "/").replace("\x00", "/@"),  // -- means @
-    ];
+    // First, handle `--` which means `/.` (hidden directories like .claude)
+    // Replace `--` with a placeholder, then `-` with `/`, then restore `/.`
+    let base = id.replace("--", "\x00").replace("-", "/").replace("\x00", "/.");
 
-    for candidate in &candidates {
-        if PathBuf::from(candidate).exists() {
-            return candidate.clone();
-        }
+    // If the base path exists, we're done
+    if PathBuf::from(&base).exists() {
+        return base;
     }
 
-    // Try: `-` in project name wasn't escaped (old projects)
-    // e.g., -Users-mark-projects-lovpen-obsidian -> /Users/mark/projects/lovpen-obsidian
-    let standard = &candidates[0];
-    if let Some(projects_idx) = standard.find("/projects/") {
-        let (prefix, rest) = standard.split_at(projects_idx + "/projects/".len());
-        if let Some(slash_idx) = rest.find('/') {
-            let candidate = format!("{}{}-{}", prefix, &rest[..slash_idx], &rest[slash_idx + 1..]);
-            if PathBuf::from(&candidate).exists() {
-                return candidate;
+    // Otherwise, the project name likely contains hyphens
+    // Try progressively merging path segments after common base directories
+    for base_dir in &["/projects/", "/repos/", "/Documents/", "/Desktop/"] {
+        if let Some(idx) = base.find(base_dir) {
+            let prefix = &base[..idx + base_dir.len()];
+            let rest = &base[idx + base_dir.len()..];
+
+            // Try merging segments: /a/b/c -> a-b-c, a-b/c, a/b-c, etc.
+            if let Some(merged) = try_merge_segments(prefix, rest) {
+                return merged;
             }
         }
     }
 
-    // Fallback
-    candidates[0].clone()
+    // Fallback to base interpretation
+    base
+}
+
+/// Try different combinations of merging path segments with hyphens
+fn try_merge_segments(prefix: &str, rest: &str) -> Option<String> {
+    let segments: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return None;
+    }
+
+    // Try merging all segments into one (most common: project-name-here)
+    let all_merged = format!("{}{}", prefix, segments.join("-"));
+    if PathBuf::from(&all_merged).exists() {
+        return Some(all_merged);
+    }
+
+    // Try merging first N segments, leaving rest as subdirs
+    for merge_count in (1..segments.len()).rev() {
+        let merged_part = segments[..=merge_count].join("-");
+        let rest_part = segments[merge_count + 1..].join("/");
+        let candidate = if rest_part.is_empty() {
+            format!("{}{}", prefix, merged_part)
+        } else {
+            format!("{}{}/{}", prefix, merged_part, rest_part)
+        };
+        if PathBuf::from(&candidate).exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
 }
 
 #[tauri::command]
