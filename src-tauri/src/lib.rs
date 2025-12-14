@@ -959,10 +959,16 @@ fn get_home_dir() -> String {
         .unwrap_or_default()
 }
 
+#[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
 
@@ -1032,7 +1038,8 @@ pub fn run() {
             install_setting_template,
             open_in_editor,
             get_settings_path,
-            get_home_dir
+            get_home_dir,
+            write_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -11,6 +11,7 @@ import { Button } from "./components/ui/button";
 import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   LoadingState,
   EmptyState,
@@ -821,7 +822,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
         {FEATURES.map((feature) => (
           <button
             key={feature.type}
-            onClick={() => handleFeatureClick(feature.type)}
+            onClick={() => onFeatureClick(feature.type)}
             className={`flex flex-col items-center p-6 rounded-2xl border transition-all duration-200 ${
               feature.available
                 ? "bg-card border-border/60 hover:border-primary hover:shadow-sm cursor-pointer"
@@ -1686,6 +1687,9 @@ function SessionList({
   const [projectContext, setProjectContext] = useState<ContextFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [contextTab, setContextTab] = useState<"global" | "project">("project");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -1703,6 +1707,73 @@ function SessionList({
 
   const formatDate = (ts: number) => {
     return new Date(ts * 1000).toLocaleString();
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(sessions.map(s => s.id)));
+  const deselectAll = () => setSelectedIds(new Set());
+
+  const exportSessions = async () => {
+    setExporting(true);
+    try {
+      const selected = sessions.filter(s => selectedIds.has(s.id));
+      const projectName = projectPath ? formatPath(projectPath) : projectId;
+      const totalMessages = selected.reduce((sum, s) => sum + s.message_count, 0);
+      const exportDate = new Date().toISOString();
+
+      const frontmatter = `---
+title: "${projectName} - Sessions Export"
+description: "Claude Code conversation history exported from Lovcode"
+project: "${projectPath || projectId}"
+exported_at: ${exportDate}
+sessions: ${selected.length}
+total_messages: ${totalMessages}
+generator: "Lovcode"
+---`;
+
+      const toAnchor = (s: string) => s.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+      const toc = selected.map((s, i) => {
+        const title = `Session ${i + 1}: ${s.summary || "Untitled"}`;
+        return `- [${title}](#${toAnchor(title)})`;
+      }).join('\n');
+
+      const parts: string[] = [];
+      for (let i = 0; i < selected.length; i++) {
+        const session = selected[i];
+        const messages = await invoke<Message[]>("get_session_messages", { projectId, sessionId: session.id });
+        const sessionMd = messages.map(m => {
+          const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
+          return `### ${role}\n\n${m.content}`;
+        }).join("\n\n---\n\n");
+        const meta = `_${session.message_count} messages · ${formatDate(session.last_modified)}_`;
+        parts.push(`## Session ${i + 1}: ${session.summary || "Untitled"}\n\n${meta}\n\n${sessionMd}`);
+      }
+      const body = parts.join("\n\n<br>\n\n---\n\n<br>\n\n");
+      const header = `# ${projectName}
+
+> This file contains exported Claude Code conversation sessions.
+> ${selected.length} sessions · ${totalMessages} messages`;
+      const footer = `\n\n---\n\n_Powered by [Lovcode](https://github.com/MarkShawn2020/lovcode) · Exported at ${new Date().toLocaleString()}_`;
+      const content = `${frontmatter}\n\n${header}\n\n### Table of Contents\n\n${toc}\n\n---\n\n${body}${footer}`;
+      const defaultName = (projectPath ? formatPath(projectPath) : projectId).replace(/[/\\?%*:|"<>]/g, '-');
+      const path = await save({
+        defaultPath: `${defaultName}-sessions.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+      });
+      if (path) {
+        await invoke('write_file', { path, content });
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -1766,28 +1837,71 @@ function SessionList({
         </div>
       )}
 
-      {/* Sessions */}
-      <div className="mb-4">
+      {/* Sessions Header */}
+      <div className="mb-4 flex items-center justify-between">
         <p className="text-xs text-muted uppercase tracking-wide">
           💬 Sessions ({sessions.length})
         </p>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+            <Switch checked={selectMode} onCheckedChange={(v) => { setSelectMode(v); if (!v) deselectAll(); }} />
+            <span>Select</span>
+          </label>
+          {selectMode && (
+            <>
+              <button
+                onClick={selectedIds.size === sessions.length ? deselectAll : selectAll}
+                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              >
+                {selectedIds.size === sessions.length ? "Deselect All" : "Select All"}
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={exportSessions}
+                  disabled={exporting}
+                  className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {exporting ? "Exporting..." : `Export ${selectedIds.size}`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">
-        {sessions.map((session) => (
-          <button
-            key={session.id}
-            onClick={() => onSelect(session)}
-            className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
-          >
-            <p className="font-medium text-ink line-clamp-2">
-              {session.summary || "Untitled session"}
-            </p>
-            <p className="text-sm text-muted mt-2">
-              {session.message_count} messages · {formatDate(session.last_modified)}
-            </p>
-          </button>
-        ))}
+        {sessions.map((session) => {
+          const isSelected = selectedIds.has(session.id);
+          return (
+            <div
+              key={session.id}
+              onClick={selectMode ? () => toggleSelect(session.id) : () => onSelect(session)}
+              className={`w-full text-left bg-card rounded-xl p-4 border transition-colors cursor-pointer ${
+                selectMode && isSelected ? "border-primary ring-2 ring-primary" : "border-border hover:border-primary"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-ink line-clamp-2">
+                    {session.summary || "Untitled session"}
+                  </p>
+                  <p className="text-sm text-muted mt-2">
+                    {session.message_count} messages · {formatDate(session.last_modified)}
+                  </p>
+                </div>
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSelect(session.id)}
+                    className="w-4 h-4 accent-primary cursor-pointer mt-1"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1816,6 +1930,8 @@ function MessageView({
   const [loading, setLoading] = useState(true);
   const [rawCommands, setRawCommands] = usePersistedState("lovcode:rawCommands", true);
   const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
@@ -1825,6 +1941,47 @@ function MessageView({
 
   const processContent = (content: string) => {
     return rawCommands ? restoreSlashCommand(content) : content;
+  };
+
+  const toggleSelect = (uuid: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(uuid)) next.delete(uuid);
+      else next.add(uuid);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(messages.map(m => m.uuid)));
+  };
+
+  const deselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const generateMarkdown = () => {
+    const selected = messages.filter(m => selectedIds.has(m.uuid));
+    return selected.map(m => {
+      const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
+      const content = processContent(m.content);
+      return `## ${role}\n\n${content}`;
+    }).join("\n\n---\n\n");
+  };
+
+  const copySelected = async () => {
+    await navigator.clipboard.writeText(generateMarkdown());
+  };
+
+  const exportSelected = async () => {
+    const defaultName = summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-') || 'session';
+    const path = await save({
+      defaultPath: `${defaultName}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    });
+    if (path) {
+      await invoke('write_file', { path, content: generateMarkdown() });
+    }
   };
 
   if (loading) {
@@ -1847,6 +2004,10 @@ function MessageView({
           </button>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <Switch checked={selectMode} onCheckedChange={(v) => { setSelectMode(v); if (!v) deselectAll(); }} />
+              <span>Select</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
               <Switch checked={rawCommands} onCheckedChange={setRawCommands} />
               <span>Raw input</span>
             </label>
@@ -1856,14 +2017,38 @@ function MessageView({
             </label>
           </div>
         </div>
-        <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
-          {summary || "Session"}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
+            {summary || "Session"}
+          </h1>
+          {selectMode && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={selectedIds.size === messages.length ? deselectAll : selectAll}
+                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              >
+                {selectedIds.size === messages.length ? "Deselect All" : "Select All"}
+              </button>
+              {selectedIds.size > 0 && (
+                <>
+                  <CopySelectedButton count={selectedIds.size} onCopy={copySelected} />
+                  <button
+                    onClick={exportSelected}
+                    className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+                  >
+                    Export
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="space-y-4">
         {messages.map((msg) => {
           const displayContent = processContent(msg.content);
+          const isSelected = selectedIds.has(msg.uuid);
           return (
             <div
               key={msg.uuid}
@@ -1871,9 +2056,20 @@ function MessageView({
                 msg.role === "user"
                   ? "bg-card-alt"
                   : "bg-card border border-border"
-              }`}
+              } ${selectMode && isSelected ? "ring-2 ring-primary" : ""}`}
+              onClick={selectMode ? () => toggleSelect(msg.uuid) : undefined}
             >
-              <CopyButton text={displayContent} />
+              {selectMode ? (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(msg.uuid)}
+                  className="absolute top-3 right-3 w-4 h-4 accent-primary cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <CopyButton text={displayContent} />
+              )}
               <p className="text-xs text-muted mb-2 uppercase tracking-wide">
                 {msg.role}
               </p>
@@ -1960,6 +2156,31 @@ function CopyButton({ text }: { text: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
       )}
+    </button>
+  );
+}
+
+function CopySelectedButton({ count, onCopy }: { count: number; onCopy: () => Promise<void> }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await onCopy();
+    setCopied(true);
+  };
+
+  useEffect(() => {
+    if (copied) {
+      const timer = setTimeout(() => setCopied(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [copied]);
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+    >
+      {copied ? "Copied!" : `Copy ${count} selected`}
     </button>
   );
 }
