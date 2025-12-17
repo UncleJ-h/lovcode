@@ -1657,9 +1657,9 @@ function TemplateDetailView({
 
       {template.content && (
         <DetailCard label="Content Preview">
-          <div className="prose prose-sm max-w-none text-ink">
+          <div className="prose prose-sm max-w-none prose-neutral prose-pre:bg-card-alt prose-pre:text-ink prose-code:text-ink">
             {category === "mcps" || category === "hooks" || category === "settings" ? (
-              <pre className="bg-card-alt rounded-lg p-3 text-xs font-mono overflow-x-auto">
+              <pre className="bg-card-alt rounded-lg p-3 text-xs font-mono overflow-x-auto text-ink whitespace-pre-wrap break-words">
                 {template.content}
               </pre>
             ) : (
