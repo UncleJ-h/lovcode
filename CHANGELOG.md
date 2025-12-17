@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- 新增 Sessions 和 Chats tab 及全文搜索功能
+
+  - History 页面支持三种视图切换：Projects（按项目分组）、Sessions（扁平列表）、Chats（所有消息）
+  - 集成 Tantivy 搜索引擎，支持消息内容实时搜索
+  - 各 tab 独立懒加载，切换时保持缓存
+  - Chats 显示已加载/总计消息数
+
 ## 0.5.2
 
 ### Patch Changes
