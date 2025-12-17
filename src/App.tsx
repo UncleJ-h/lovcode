@@ -1805,6 +1805,7 @@ function SessionList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions", false);
+  const [userPromptsOnly, setUserPromptsOnly] = useState(false);
 
   const filteredSessions = hideEmptySessions ? sessions.filter(s => s.message_count > 0) : sessions;
 
@@ -1865,12 +1866,14 @@ generator: "Lovcode"
       const parts: string[] = [];
       for (let i = 0; i < selected.length; i++) {
         const session = selected[i];
-        const messages = await invoke<Message[]>("get_session_messages", { projectId, sessionId: session.id });
+        const allMessages = await invoke<Message[]>("get_session_messages", { projectId, sessionId: session.id });
+        const messages = userPromptsOnly ? allMessages.filter(m => m.role === "user") : allMessages;
         const sessionMd = messages.map(m => {
           const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
           return `### ${role}\n\n${m.content}`;
         }).join("\n\n---\n\n");
-        const meta = `_${session.message_count} messages · ${formatDate(session.last_modified)}_`;
+        const msgCountLabel = userPromptsOnly ? `${messages.length} prompts` : `${session.message_count} messages`;
+        const meta = `_${msgCountLabel} · ${formatDate(session.last_modified)}_`;
         parts.push(`## Session ${i + 1}: ${session.summary || "Untitled"}\n\n${meta}\n\n${sessionMd}`);
       }
       const body = parts.join("\n\n<br>\n\n---\n\n<br>\n\n");
@@ -1977,13 +1980,24 @@ generator: "Lovcode"
                 {selectedIds.size === filteredSessions.length ? "Deselect All" : "Select All"}
               </button>
               {selectedIds.size > 0 && (
-                <button
-                  onClick={exportSessions}
-                  disabled={exporting}
-                  className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  {exporting ? "Exporting..." : `Export ${selectedIds.size}`}
-                </button>
+                <>
+                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={userPromptsOnly}
+                      onChange={(e) => setUserPromptsOnly(e.target.checked)}
+                      className="w-3 h-3 accent-primary cursor-pointer"
+                    />
+                    <span>Prompts only</span>
+                  </label>
+                  <button
+                    onClick={exportSessions}
+                    disabled={exporting}
+                    className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {exporting ? "Exporting..." : `Export ${selectedIds.size}`}
+                  </button>
+                </>
               )}
             </>
           )}
@@ -2053,6 +2067,7 @@ function MessageView({
   const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [userPromptsOnly, setUserPromptsOnly] = useState(false);
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
@@ -2081,9 +2096,18 @@ function MessageView({
     setSelectedIds(new Set());
   };
 
+  const getExportMessages = () => {
+    let selected = messages.filter(m => selectedIds.has(m.uuid));
+    if (userPromptsOnly) {
+      selected = selected.filter(m => m.role === "user");
+    }
+    return selected;
+  };
+
+  const exportCount = getExportMessages().length;
+
   const generateMarkdown = () => {
-    const selected = messages.filter(m => selectedIds.has(m.uuid));
-    return selected.map(m => {
+    return getExportMessages().map(m => {
       const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
       const content = processContent(m.content);
       return `## ${role}\n\n${content}`;
@@ -2152,12 +2176,22 @@ function MessageView({
               </button>
               {selectedIds.size > 0 && (
                 <>
-                  <CopySelectedButton count={selectedIds.size} onCopy={copySelected} />
+                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={userPromptsOnly}
+                      onChange={(e) => setUserPromptsOnly(e.target.checked)}
+                      className="w-3 h-3 accent-primary cursor-pointer"
+                    />
+                    <span>Prompts only</span>
+                  </label>
+                  <CopySelectedButton count={exportCount} onCopy={copySelected} />
                   <button
                     onClick={exportSelected}
-                    className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+                    disabled={exportCount === 0}
+                    className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors disabled:opacity-50"
                   >
-                    Export
+                    Export{exportCount > 0 ? ` ${exportCount}` : ""}
                   </button>
                 </>
               )}
@@ -2169,7 +2203,9 @@ function MessageView({
       <div className="space-y-4">
         {messages.map((msg) => {
           const displayContent = processContent(msg.content);
-          const isSelected = selectedIds.has(msg.uuid);
+          const isInSelection = selectedIds.has(msg.uuid);
+          const isExcludedByFilter = userPromptsOnly && msg.role !== "user";
+          const isEffectivelySelected = isInSelection && !isExcludedByFilter;
           return (
             <div
               key={msg.uuid}
@@ -2177,15 +2213,16 @@ function MessageView({
                 msg.role === "user"
                   ? "bg-card-alt"
                   : "bg-card border border-border"
-              } ${selectMode && isSelected ? "ring-2 ring-primary" : ""}`}
+              } ${selectMode && isEffectivelySelected ? "ring-2 ring-primary" : ""} ${selectMode && isExcludedByFilter ? "opacity-50" : ""}`}
               onClick={selectMode ? () => toggleSelect(msg.uuid) : undefined}
             >
               {selectMode ? (
                 <input
                   type="checkbox"
-                  checked={isSelected}
+                  checked={isEffectivelySelected}
                   onChange={() => toggleSelect(msg.uuid)}
-                  className="absolute top-3 right-3 w-4 h-4 accent-primary cursor-pointer"
+                  disabled={isExcludedByFilter}
+                  className="absolute top-3 right-3 w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed"
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
