@@ -54,6 +54,10 @@ cargoToml = cargoToml.replace(/^version = "[^"]+"$/m, `version = "${newVersion}"
 fs.writeFileSync(cargoTomlPath, cargoToml);
 console.log(`✓ Cargo.toml: ${currentVersion} → ${newVersion}`);
 
+// 更新 Cargo.lock
+execSync('cargo update -p lovcode --quiet', { cwd: path.join(root, 'src-tauri'), stdio: 'pipe' });
+console.log(`✓ Cargo.lock: 已同步`);
+
 // 更新 tauri.conf.json
 const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
 tauriConf.version = newVersion;
@@ -63,7 +67,7 @@ console.log(`✓ tauri.conf.json: ${currentVersion} → ${newVersion}`);
 // Git commit 和 tag
 if (!process.argv.includes('--no-git')) {
   try {
-    execSync('git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json', { cwd: root, stdio: 'pipe' });
+    execSync('git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json', { cwd: root, stdio: 'pipe' });
     execSync(`git commit -m "chore: bump version to ${newVersion}"`, { cwd: root, stdio: 'pipe' });
     execSync(`git tag v${newVersion}`, { cwd: root, stdio: 'pipe' });
     console.log(`✓ Git commit + tag v${newVersion}`);
