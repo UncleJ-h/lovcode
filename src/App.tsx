@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
 import { Switch } from "./components/ui/switch";
@@ -124,6 +124,8 @@ interface Message {
   role: string;
   content: string;
   timestamp: string;
+  is_meta: boolean;
+  is_tool: boolean;
 }
 
 interface LocalCommand {
@@ -2043,9 +2045,9 @@ generator: "Lovcode"
 }
 
 function restoreSlashCommand(content: string): string {
-  const pattern = /<command-message>[^<]*<\/command-message>\s*<command-name>(\/[^<]+)<\/command-name>\s*<command-args>([^<]*)<\/command-args>/g;
+  const pattern = /<command-message>[^<]*<\/command-message>\s*<command-name>(\/[^<]+)<\/command-name>(?:\s*<command-args>([^<]*)<\/command-args>)?/g;
   return content.replace(pattern, (_match, cmd, args) => {
-    const trimmedArgs = args.trim();
+    const trimmedArgs = (args || '').trim();
     return trimmedArgs ? `${cmd} ${trimmedArgs}` : cmd;
   });
 }
@@ -2065,9 +2067,9 @@ function MessageView({
   const [loading, setLoading] = useState(true);
   const [rawCommands, setRawCommands] = usePersistedState("lovcode:rawCommands", true);
   const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
+  const [hideIntermediate, setHideIntermediate] = usePersistedState("lovcode:hideIntermediate", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
-  const [userPromptsOnly, setUserPromptsOnly] = useState(false);
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
@@ -2079,6 +2081,10 @@ function MessageView({
     return rawCommands ? restoreSlashCommand(content) : content;
   };
 
+  const filteredMessages = hideIntermediate
+    ? messages.filter(m => !m.is_meta && !m.is_tool)
+    : messages;
+
   const toggleSelect = (uuid: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -2089,7 +2095,11 @@ function MessageView({
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(messages.map(m => m.uuid)));
+    setSelectedIds(new Set(filteredMessages.map(m => m.uuid)));
+  };
+
+  const selectUserOnly = () => {
+    setSelectedIds(new Set(filteredMessages.filter(m => m.role === "user").map(m => m.uuid)));
   };
 
   const deselectAll = () => {
@@ -2097,35 +2107,54 @@ function MessageView({
   };
 
   const getExportMessages = () => {
-    let selected = messages.filter(m => selectedIds.has(m.uuid));
-    if (userPromptsOnly) {
-      selected = selected.filter(m => m.role === "user");
-    }
-    return selected;
+    return filteredMessages.filter(m => selectedIds.has(m.uuid));
   };
 
   const exportCount = getExportMessages().length;
+  const [exportFormat, setExportFormat] = useState<"full" | "bullet">("full");
+  const [truncateBullet, setTruncateBullet] = useState(false);
+  const [addWatermark, setAddWatermark] = useState(true);
 
-  const generateMarkdown = () => {
-    return getExportMessages().map(m => {
-      const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
-      const content = processContent(m.content);
-      return `## ${role}\n\n${content}`;
-    }).join("\n\n---\n\n");
+  const generateOutput = () => {
+    const msgs = getExportMessages();
+    let output: string;
+    if (exportFormat === "bullet") {
+      output = msgs.map(m => {
+        const prefix = m.role === "user" ? "- **Q:**" : "- **A:**";
+        const full = processContent(m.content);
+        if (truncateBullet) {
+          const firstLine = full.split('\n')[0].slice(0, 200);
+          const isTruncated = full.includes('\n') || full.length > 200;
+          return `${prefix} ${firstLine}${isTruncated ? '...' : ''}`;
+        }
+        return `${prefix} ${full}`;
+      }).join("\n");
+    } else {
+      output = msgs.map(m => {
+        const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
+        const content = processContent(m.content);
+        return `## ${role}\n\n${content}`;
+      }).join("\n\n---\n\n");
+    }
+    if (addWatermark) {
+      output += "\n\n---\n\n*Exported with [Lovcode](https://github.com/MarkShawn2020/lovcode) - A desktop companion app for AI coding tools*";
+    }
+    return output;
   };
 
   const copySelected = async () => {
-    await navigator.clipboard.writeText(generateMarkdown());
+    await navigator.clipboard.writeText(generateOutput());
   };
 
   const exportSelected = async () => {
     const defaultName = summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-') || 'session';
+    const ext = exportFormat === "bullet" ? "md" : "md";
     const path = await save({
-      defaultPath: `${defaultName}.md`,
+      defaultPath: `${defaultName}.${ext}`,
       filters: [{ name: 'Markdown', extensions: ['md'] }]
     });
     if (path) {
-      await invoke('write_file', { path, content: generateMarkdown() });
+      await invoke('write_file', { path, content: generateOutput() });
     }
   };
 
@@ -2157,33 +2186,77 @@ function MessageView({
               <span>Raw input</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <Switch checked={hideIntermediate} onCheckedChange={setHideIntermediate} />
+              <span>Clean</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
               <Switch checked={markdownPreview} onCheckedChange={setMarkdownPreview} />
               <span>Preview</span>
             </label>
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
-            {summary || "Session"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
+              {summary || "Session"}
+            </h1>
+            <button
+              onClick={() => invoke("reveal_session_file", { projectId, sessionId })}
+              className="text-muted hover:text-ink transition-colors"
+              title="Reveal in Finder"
+            >
+              <FolderOpen size={16} />
+            </button>
+          </div>
           {selectMode && (
             <div className="flex items-center gap-2">
               <button
-                onClick={selectedIds.size === messages.length ? deselectAll : selectAll}
+                onClick={selectAll}
                 className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
               >
-                {selectedIds.size === messages.length ? "Deselect All" : "Select All"}
+                All
+              </button>
+              <button
+                onClick={selectUserOnly}
+                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              >
+                User
+              </button>
+              <button
+                onClick={deselectAll}
+                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              >
+                None
               </button>
               {selectedIds.size > 0 && (
                 <>
-                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <select
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value as "full" | "bullet")}
+                    className="text-xs px-1 py-1 rounded bg-card-alt border border-border text-muted"
+                  >
+                    <option value="full">Full</option>
+                    <option value="bullet">Bullet</option>
+                  </select>
+                  {exportFormat === "bullet" && (
+                    <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={truncateBullet}
+                        onChange={(e) => setTruncateBullet(e.target.checked)}
+                        className="w-3 h-3 accent-primary cursor-pointer"
+                      />
+                      <span>Truncate</span>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={userPromptsOnly}
-                      onChange={(e) => setUserPromptsOnly(e.target.checked)}
+                      checked={addWatermark}
+                      onChange={(e) => setAddWatermark(e.target.checked)}
                       className="w-3 h-3 accent-primary cursor-pointer"
                     />
-                    <span>Prompts only</span>
+                    <span>Watermark</span>
                   </label>
                   <CopySelectedButton count={exportCount} onCopy={copySelected} />
                   <button
@@ -2191,7 +2264,7 @@ function MessageView({
                     disabled={exportCount === 0}
                     className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors disabled:opacity-50"
                   >
-                    Export{exportCount > 0 ? ` ${exportCount}` : ""}
+                    Export {exportCount}
                   </button>
                 </>
               )}
@@ -2201,11 +2274,9 @@ function MessageView({
       </header>
 
       <div className="space-y-4">
-        {messages.map((msg) => {
+        {filteredMessages.map((msg) => {
           const displayContent = processContent(msg.content);
-          const isInSelection = selectedIds.has(msg.uuid);
-          const isExcludedByFilter = userPromptsOnly && msg.role !== "user";
-          const isEffectivelySelected = isInSelection && !isExcludedByFilter;
+          const isSelected = selectedIds.has(msg.uuid);
           return (
             <div
               key={msg.uuid}
@@ -2213,16 +2284,15 @@ function MessageView({
                 msg.role === "user"
                   ? "bg-card-alt"
                   : "bg-card border border-border"
-              } ${selectMode && isEffectivelySelected ? "ring-2 ring-primary" : ""} ${selectMode && isExcludedByFilter ? "opacity-50" : ""}`}
+              } ${selectMode && isSelected ? "ring-2 ring-primary" : ""}`}
               onClick={selectMode ? () => toggleSelect(msg.uuid) : undefined}
             >
               {selectMode ? (
                 <input
                   type="checkbox"
-                  checked={isEffectivelySelected}
+                  checked={isSelected}
                   onChange={() => toggleSelect(msg.uuid)}
-                  disabled={isExcludedByFilter}
-                  className="absolute top-3 right-3 w-4 h-4 accent-primary cursor-pointer disabled:cursor-not-allowed"
+                  className="absolute top-3 right-3 w-4 h-4 accent-primary cursor-pointer"
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (

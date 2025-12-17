@@ -28,6 +28,8 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub timestamp: String,
+    pub is_meta: bool,      // slash command 展开的内容
+    pub is_tool: bool,      // tool_use 或 tool_result
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +40,8 @@ struct RawLine {
     uuid: Option<String>,
     message: Option<RawMessage>,
     timestamp: Option<String>,
+    #[serde(rename = "isMeta")]
+    is_meta: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -272,7 +276,8 @@ fn get_session_messages(project_id: String, session_id: String) -> Result<Vec<Me
             if line_type == Some("user") || line_type == Some("assistant") {
                 if let Some(msg) = &parsed.message {
                     let role = msg.role.clone().unwrap_or_default();
-                    let content = extract_content(&msg.content);
+                    let (content, is_tool) = extract_content_with_meta(&msg.content);
+                    let is_meta = parsed.is_meta.unwrap_or(false);
 
                     if !content.is_empty() {
                         messages.push(Message {
@@ -280,6 +285,8 @@ fn get_session_messages(project_id: String, session_id: String) -> Result<Vec<Me
                             role,
                             content,
                             timestamp: parsed.timestamp.unwrap_or_default(),
+                            is_meta,
+                            is_tool,
                         });
                     }
                 }
@@ -290,11 +297,20 @@ fn get_session_messages(project_id: String, session_id: String) -> Result<Vec<Me
     Ok(messages)
 }
 
-fn extract_content(value: &Option<serde_json::Value>) -> String {
+fn extract_content_with_meta(value: &Option<serde_json::Value>) -> (String, bool) {
     match value {
-        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::String(s)) => (s.clone(), false),
         Some(serde_json::Value::Array(arr)) => {
-            arr.iter()
+            // Check if array contains tool_use or tool_result
+            let has_tool = arr.iter().any(|item| {
+                if let Some(obj) = item.as_object() {
+                    let t = obj.get("type").and_then(|v| v.as_str());
+                    return t == Some("tool_use") || t == Some("tool_result");
+                }
+                false
+            });
+
+            let text = arr.iter()
                 .filter_map(|item| {
                     if let Some(obj) = item.as_object() {
                         if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
@@ -304,9 +320,11 @@ fn extract_content(value: &Option<serde_json::Value>) -> String {
                     None
                 })
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join("\n");
+
+            (text, has_tool)
         }
-        _ => String::new(),
+        _ => (String::new(), false),
     }
 }
 
@@ -950,6 +968,43 @@ fn get_settings() -> Result<ClaudeSettings, String> {
 }
 
 #[tauri::command]
+fn reveal_session_file(project_id: String, session_id: String) -> Result<(), String> {
+    let session_path = get_claude_dir()
+        .join("projects")
+        .join(&project_id)
+        .join(format!("{}.jsonl", session_id));
+
+    if !session_path.exists() {
+        return Err("Session file not found".to_string());
+    }
+
+    let path = session_path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(session_path.parent().unwrap_or(&session_path))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn open_in_editor(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -1097,6 +1152,7 @@ pub fn run() {
             install_hook_template,
             install_setting_template,
             open_in_editor,
+            reveal_session_file,
             get_settings_path,
             get_mcp_config_path,
             get_home_dir,
