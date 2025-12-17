@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { version } from "../package.json";
 import { PanelLeft, User } from "lucide-react";
 import Markdown from "react-markdown";
 import { Switch } from "./components/ui/switch";
@@ -405,7 +406,7 @@ function App() {
         </div>
 
         <div className="p-3 border-t border-border min-w-52">
-          <p className="text-xs text-muted text-center">Lovcode v0.1.2</p>
+          <p className="text-xs text-muted text-center">Lovcode v{version}</p>
         </div>
       </aside>
 
