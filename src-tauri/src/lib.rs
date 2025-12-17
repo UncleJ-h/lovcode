@@ -997,6 +997,33 @@ fn write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn update_mcp_env(server_name: String, env_key: String, env_value: String) -> Result<(), String> {
+    let claude_json_path = get_claude_json_path();
+
+    let mut claude_json: serde_json::Value = if claude_json_path.exists() {
+        let content = fs::read_to_string(&claude_json_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        return Err("~/.claude.json not found".to_string());
+    };
+
+    let server = claude_json
+        .get_mut("mcpServers")
+        .and_then(|s| s.get_mut(&server_name))
+        .ok_or_else(|| format!("MCP server '{}' not found", server_name))?;
+
+    if !server.get("env").is_some() {
+        server["env"] = serde_json::json!({});
+    }
+    server["env"][&env_key] = serde_json::Value::String(env_value);
+
+    let output = serde_json::to_string_pretty(&claude_json).map_err(|e| e.to_string())?;
+    fs::write(&claude_json_path, output).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1073,7 +1100,8 @@ pub fn run() {
             get_settings_path,
             get_mcp_config_path,
             get_home_dir,
-            write_file
+            write_file,
+            update_mcp_env
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

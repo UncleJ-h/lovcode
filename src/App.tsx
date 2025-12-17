@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { version } from "../package.json";
-import { PanelLeft, User } from "lucide-react";
+import { PanelLeft, User, ExternalLink } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
 import { Switch } from "./components/ui/switch";
 import { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar";
@@ -1069,6 +1070,8 @@ function McpView({
   const [mcpConfigPath, setMcpConfigPath] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [editingEnv, setEditingEnv] = useState<{ server: string; key: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -1081,6 +1084,34 @@ function McpView({
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const handleEnvClick = (serverName: string, key: string, currentValue: string) => {
+    setEditingEnv({ server: serverName, key });
+    setEditValue(currentValue);
+  };
+
+  const handleEnvSave = async () => {
+    if (!editingEnv) return;
+    await invoke("update_mcp_env", {
+      serverName: editingEnv.server,
+      envKey: editingEnv.key,
+      envValue: editValue,
+    });
+    setServers((prev) =>
+      prev.map((s) =>
+        s.name === editingEnv.server ? { ...s, env: { ...s.env, [editingEnv.key]: editValue } } : s
+      )
+    );
+    setEditingEnv(null);
+  };
+
+  const getMcpUrl = (server: McpServer): string | null => {
+    if (server.command === "npx" && server.args.length > 0) {
+      const pkg = server.args.find((a) => a.startsWith("@") || a.startsWith("mcp-"));
+      if (pkg) return `https://www.npmjs.com/package/${pkg}`;
+    }
+    return null;
+  };
 
   if (loading) return <LoadingState message="Loading MCP servers..." />;
 
@@ -1115,7 +1146,18 @@ function McpView({
             <div key={server.name} className="bg-card rounded-xl p-4 border border-border">
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div>
-                  <p className="font-medium text-ink">{server.name}</p>
+                  <p className="font-medium text-ink flex items-center gap-2">
+                    {server.name}
+                    {getMcpUrl(server) && (
+                      <button
+                        onClick={() => openUrl(getMcpUrl(server)!)}
+                        className="text-muted hover:text-primary transition-colors"
+                        title="Open in npm"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </p>
                   {server.description && <p className="text-sm text-muted mt-1">{server.description}</p>}
                 </div>
               </div>
@@ -1127,9 +1169,33 @@ function McpView({
               </div>
               {Object.keys(server.env).length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {Object.keys(server.env).map((key) => (
-                    <span key={key} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">{key}</span>
-                  ))}
+                  {Object.entries(server.env).map(([key, value]) =>
+                    editingEnv?.server === server.name && editingEnv?.key === key ? (
+                      <div key={key} className="flex items-center gap-1">
+                        <span className="text-xs text-muted">{key}=</span>
+                        <input
+                          autoFocus
+                          className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink w-40"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleEnvSave();
+                            if (e.key === "Escape") setEditingEnv(null);
+                          }}
+                          onBlur={handleEnvSave}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        key={key}
+                        onClick={() => handleEnvClick(server.name, key, value)}
+                        className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 transition-colors cursor-pointer"
+                        title={`Click to edit ${key}`}
+                      >
+                        {key}
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
