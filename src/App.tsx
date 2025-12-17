@@ -1805,11 +1805,11 @@ function SessionList({
   const [projectContext, setProjectContext] = useState<ContextFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [contextTab, setContextTab] = useState<"global" | "project">("project");
-  const [selectMode, setSelectMode] = useState(false);
+  const [selectMode, setSelectMode] = usePersistedState("lovcode:sessionSelectMode", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions", false);
-  const [userPromptsOnly, setUserPromptsOnly] = useState(false);
+  const [userPromptsOnly, setUserPromptsOnly] = usePersistedState("lovcode:userPromptsOnly", false);
 
   const filteredSessions = hideEmptySessions ? sessions.filter(s => s.message_count > 0) : sessions;
 
@@ -2193,8 +2193,8 @@ function ExportDialog({ open, onOpenChange, messages, processContent, defaultNam
 
         <div className="flex-1 overflow-auto min-h-0 mt-4">
           <div className="text-xs text-muted mb-2">Preview</div>
-          <div className="bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto max-h-[300px] font-mono whitespace-pre-wrap">
-            {preview.slice(0, 2000)}{preview.length > 2000 && '...'}
+          <div className="bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto font-mono whitespace-pre-wrap">
+            {preview.slice(0, 5000)}{preview.length > 5000 && '...'}
           </div>
         </div>
 
@@ -2231,7 +2231,8 @@ function MessageView({
   const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
   const [hideIntermediate, setHideIntermediate] = usePersistedState("lovcode:hideIntermediate", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
+  const [selectMode, setSelectMode] = usePersistedState("lovcode:selectMode", false);
+  const [selectPreset, setSelectPreset] = usePersistedState<"all" | "user" | "none">("lovcode:selectPreset", "all");
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
@@ -2247,6 +2248,18 @@ function MessageView({
     ? messages.filter(m => !m.is_meta && !m.is_tool)
     : messages;
 
+  // Auto-apply selection preset when messages load or filter changes
+  useEffect(() => {
+    if (!selectMode || filteredMessages.length === 0) return;
+    if (selectPreset === "all") {
+      setSelectedIds(new Set(filteredMessages.map(m => m.uuid)));
+    } else if (selectPreset === "user") {
+      setSelectedIds(new Set(filteredMessages.filter(m => m.role === "user").map(m => m.uuid)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }, [filteredMessages, selectMode, selectPreset]);
+
   const toggleSelect = (uuid: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -2257,15 +2270,15 @@ function MessageView({
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(filteredMessages.map(m => m.uuid)));
+    setSelectPreset("all");
   };
 
   const selectUserOnly = () => {
-    setSelectedIds(new Set(filteredMessages.filter(m => m.role === "user").map(m => m.uuid)));
+    setSelectPreset("user");
   };
 
   const deselectAll = () => {
-    setSelectedIds(new Set());
+    setSelectPreset("none");
   };
 
   const getExportMessages = () => {
@@ -2328,19 +2341,19 @@ function MessageView({
           <div className="flex items-center gap-2 mt-3">
             <button
               onClick={selectAll}
-              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "all" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
             >
               All
             </button>
             <button
               onClick={selectUserOnly}
-              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "user" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
             >
               User
             </button>
             <button
               onClick={deselectAll}
-              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "none" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
             >
               None
             </button>
