@@ -2135,7 +2135,7 @@ function ExportDialog({ open, onOpenChange, messages, processContent, defaultNam
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="!flex !flex-col max-w-2xl max-h-[80vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Export {messages.length} Messages</DialogTitle>
         </DialogHeader>
@@ -2191,10 +2191,10 @@ function ExportDialog({ open, onOpenChange, messages, processContent, defaultNam
           )}
         </div>
 
-        <div className="flex-1 overflow-auto min-h-0 mt-4">
-          <div className="text-xs text-muted mb-2">Preview</div>
-          <div className="bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto font-mono whitespace-pre-wrap">
-            {preview.slice(0, 5000)}{preview.length > 5000 && '...'}
+        <div className="flex-1 flex flex-col min-h-[200px] overflow-hidden mt-4">
+          <div className="text-xs text-muted mb-2 shrink-0">Preview</div>
+          <div className="flex-1 bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto font-mono whitespace-pre-wrap break-all">
+            {preview}
           </div>
         </div>
 
@@ -2227,9 +2227,8 @@ function MessageView({
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rawCommands, setRawCommands] = usePersistedState("lovcode:rawCommands", true);
+  const [originalChat, setOriginalChat] = usePersistedState("lovcode:originalChat", true);
   const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
-  const [hideIntermediate, setHideIntermediate] = usePersistedState("lovcode:hideIntermediate", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = usePersistedState("lovcode:selectMode", false);
   const [selectPreset, setSelectPreset] = usePersistedState<"all" | "user" | "none">("lovcode:selectPreset", "all");
@@ -2241,10 +2240,10 @@ function MessageView({
   }, [projectId, sessionId]);
 
   const processContent = (content: string) => {
-    return rawCommands ? restoreSlashCommand(content) : content;
+    return originalChat ? restoreSlashCommand(content) : content;
   };
 
-  const filteredMessages = hideIntermediate
+  const filteredMessages = originalChat
     ? messages.filter(m => !m.is_meta && !m.is_tool)
     : messages;
 
@@ -2296,77 +2295,98 @@ function MessageView({
     );
   }
 
+  const pillBase = "px-2.5 py-1 text-xs rounded-full transition-colors";
+  const pillActive = "bg-primary/15 text-primary";
+  const pillInactive = "text-muted hover:text-ink hover:bg-card-alt";
+  const groupLabel = "text-[10px] uppercase tracking-wider text-muted px-2";
+
   return (
     <div className="px-6 py-8">
-      <header className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <button
-            onClick={onBack}
-            className="text-muted hover:text-ink flex items-center gap-1 text-sm"
-          >
-            <span>←</span> Sessions
-          </button>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <Switch checked={selectMode} onCheckedChange={(v) => { setSelectMode(v); if (!v) deselectAll(); }} />
-              <span>Select</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <Switch checked={rawCommands} onCheckedChange={setRawCommands} />
-              <span>Raw input</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <Switch checked={hideIntermediate} onCheckedChange={setHideIntermediate} />
-              <span>Clean</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <Switch checked={markdownPreview} onCheckedChange={setMarkdownPreview} />
-              <span>Preview</span>
-            </label>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
+      <header className="mb-8">
+        <button
+          onClick={onBack}
+          className="text-muted hover:text-ink flex items-center gap-1 text-sm mb-4"
+        >
+          <span>←</span> Sessions
+        </button>
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <h1 className="font-serif text-2xl font-semibold text-ink leading-tight">
             {summary || "Session"}
           </h1>
           <button
             onClick={() => invoke("reveal_session_file", { projectId, sessionId })}
-            className="text-muted hover:text-ink transition-colors"
+            className="text-muted hover:text-ink transition-colors shrink-0 mt-1"
             title="Reveal in Finder"
           >
-            <FolderOpen size={16} />
+            <FolderOpen size={18} />
           </button>
         </div>
-        {selectMode && (
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={selectAll}
-              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "all" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
-            >
-              All
-            </button>
-            <button
-              onClick={selectUserOnly}
-              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "user" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
-            >
-              User
-            </button>
-            <button
-              onClick={deselectAll}
-              className={`text-xs px-2 py-1 rounded transition-colors ${selectPreset === "none" ? "bg-primary text-primary-foreground" : "bg-card-alt hover:bg-border text-muted hover:text-ink"}`}
-            >
-              None
-            </button>
-            {selectedIds.size > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <span className={groupLabel}>View</span>
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => setExportDialogOpen(true)}
-                className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                onClick={() => setOriginalChat(!originalChat)}
+                className={`${pillBase} ${originalChat ? pillActive : pillInactive}`}
+                title="Show original conversation (restore slash commands, hide tool calls)"
               >
-                Export {exportCount}
+                Original
               </button>
-            )}
+              <button
+                onClick={() => setMarkdownPreview(!markdownPreview)}
+                className={`${pillBase} ${markdownPreview ? pillActive : pillInactive}`}
+                title="Render markdown"
+              >
+                Markdown Preview
+              </button>
+            </div>
           </div>
-        )}
+          <div className="flex items-center gap-3">
+            <span className={groupLabel}>Filter</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setSelectMode(!selectMode); if (selectMode) deselectAll(); }}
+                className={`${pillBase} ${selectMode ? pillActive : pillInactive}`}
+              >
+                Select
+              </button>
+              {selectMode && (
+                <>
+                  <span className="w-px h-3 bg-border mx-1" />
+                  <button
+                    onClick={selectAll}
+                    className={`${pillBase} ${selectPreset === "all" ? pillActive : pillInactive}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={selectUserOnly}
+                    className={`${pillBase} ${selectPreset === "user" ? pillActive : pillInactive}`}
+                  >
+                    User
+                  </button>
+                  <button
+                    onClick={deselectAll}
+                    className={`${pillBase} ${selectPreset === "none" ? pillActive : pillInactive}`}
+                  >
+                    None
+                  </button>
+                  {selectedIds.size > 0 && (
+                    <>
+                      <span className="w-px h-3 bg-border mx-1" />
+                      <button
+                        onClick={() => setExportDialogOpen(true)}
+                        className="px-3 py-1 text-xs rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        Export {exportCount}
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </header>
 
       <div className="space-y-4">
