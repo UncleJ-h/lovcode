@@ -2963,14 +2963,14 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-h-[200px] overflow-hidden mt-4">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden mt-4">
           <div className="text-xs text-muted-foreground-foreground mb-2 shrink-0">Preview</div>
           <div className="flex-1 bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto font-mono whitespace-pre-wrap break-all">
             {preview}
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-4 border-t border-border">
+        <div className="flex justify-end gap-2 pt-4 border-t border-border shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
