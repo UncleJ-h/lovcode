@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -189,6 +189,9 @@ interface LocalCommand {
   allowed_tools: string | null;
   argument_hint: string | null;
   content: string;
+  version: string | null;
+  status: "active" | "deprecated" | "archived";
+  deprecated_by: string | null;
 }
 
 interface LocalAgent {
@@ -745,6 +748,9 @@ function App() {
           <CommandDetailView
             command={view.command}
             onBack={() => navigate({ type: "commands" })}
+            onCommandUpdated={() => {
+              // Will refresh when navigating back to commands view
+            }}
           />
         )}
 
@@ -1566,6 +1572,7 @@ function CommandsView({
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<CommandSortKey>("usage");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
+  const [showDeprecated, setShowDeprecated] = useState(false);
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
 
   useEffect(() => {
@@ -1582,8 +1589,19 @@ function CommandsView({
     }
   }, [loading]);
 
+  // Filter by status: show deprecated/archived only when toggle is on OR when searching
+  const statusFiltered = filtered.filter((cmd) => {
+    if (cmd.status === "active") return true;
+    // Show deprecated/archived when toggle is on or when actively searching
+    return showDeprecated || search.length > 0;
+  });
+
   // Sort filtered commands
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = [...statusFiltered].sort((a, b) => {
+    // Always put deprecated/archived at the end
+    if (a.status !== "active" && b.status === "active") return 1;
+    if (a.status === "active" && b.status !== "active") return -1;
+
     if (sortKey === "usage") {
       const aCount = commandStats[a.name] || 0;
       const bCount = commandStats[b.name] || 0;
@@ -1603,11 +1621,15 @@ function CommandsView({
     }
   };
 
+  // Count stats
+  const activeCount = commands.filter((c) => c.status === "active").length;
+  const deprecatedCount = commands.filter((c) => c.status !== "active").length;
+
   if (loading) return <LoadingState message="Loading commands..." />;
 
   return (
     <ConfigPage>
-      <PageHeader title="Commands" subtitle={`${commands.length} slash commands in ~/.claude/commands`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
+      <PageHeader title="Commands" subtitle={`${activeCount} active, ${deprecatedCount} deprecated/archived`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <div className="flex items-center gap-4 mb-6">
         <SearchInput
           placeholder="Search local & marketplace..."
@@ -1615,8 +1637,13 @@ function CommandsView({
           onChange={setSearch}
           className="flex-1 max-w-md px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted-foreground focus:outline-none focus:border-primary"
         />
-        <div className="flex items-center gap-1 text-xs shrink-0">
-          <span className="text-muted-foreground mr-1">Sort:</span>
+        <div className="flex items-center gap-3 text-xs shrink-0">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Switch checked={showDeprecated} onCheckedChange={setShowDeprecated} />
+            <span className="text-muted-foreground">Deprecated</span>
+          </label>
+          <span className="text-border">|</span>
+          <span className="text-muted-foreground">Sort:</span>
           <button
             onClick={() => toggleSort("usage")}
             className={`px-2 py-1 rounded ${sortKey === "usage" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-ink"}`}
@@ -1636,12 +1663,9 @@ function CommandsView({
       {sorted.length > 0 && (
         <div className="space-y-2">
           {sorted.map((cmd) => (
-            <ItemCard
-              key={cmd.name}
-              name={cmd.name}
-              description={cmd.description}
-              badge={cmd.argument_hint}
-              badgeVariant="muted"
+            <CommandItemCard
+              key={cmd.path}
+              command={cmd}
               usageCount={commandStats[cmd.name]}
               onClick={() => onSelect(cmd)}
             />
@@ -1649,11 +1673,11 @@ function CommandsView({
         </div>
       )}
 
-      {filtered.length === 0 && !search && (
+      {statusFiltered.length === 0 && !search && (
         <EmptyState icon="⚡" message="No commands found" hint="Create commands in ~/.claude/commands/" />
       )}
 
-      {filtered.length === 0 && search && (
+      {statusFiltered.length === 0 && search && (
         <p className="text-muted-foreground text-sm">No local commands match "{search}"</p>
       )}
 
@@ -1663,7 +1687,117 @@ function CommandsView({
   );
 }
 
-function CommandDetailView({ command, onBack }: { command: LocalCommand; onBack: () => void }) {
+function CommandItemCard({
+  command,
+  usageCount,
+  onClick,
+}: {
+  command: LocalCommand;
+  usageCount?: number;
+  onClick: () => void;
+}) {
+  const isDeprecated = command.status === "deprecated";
+  const isArchived = command.status === "archived";
+  const isInactive = isDeprecated || isArchived;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-xl p-4 border transition-colors ${
+        isInactive
+          ? "bg-card-alt border-dashed border-border/50 opacity-70 hover:opacity-100"
+          : "bg-card border-border hover:border-primary"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
+              {command.name}
+            </p>
+            {command.version && (
+              <span className="text-xs text-muted-foreground">v{command.version.replace(/^["']|["']$/g, '')}</span>
+            )}
+            {usageCount !== undefined && usageCount > 0 && (
+              <span className="text-xs text-muted-foreground" title={`Used ${usageCount} times`}>
+                ×{usageCount}
+              </span>
+            )}
+          </div>
+          {command.description && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{command.description}</p>
+          )}
+          {isDeprecated && command.deprecated_by && (
+            <p className="text-xs text-amber-600 mt-1">
+              → Use {command.deprecated_by} instead
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {isDeprecated && (
+            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-600">
+              deprecated
+            </span>
+          )}
+          {isArchived && (
+            <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
+              archived
+            </span>
+          )}
+          {!isInactive && command.argument_hint && (
+            <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
+              {command.argument_hint}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CommandDetailView({
+  command,
+  onBack,
+  onCommandUpdated,
+}: {
+  command: LocalCommand;
+  onBack: () => void;
+  onCommandUpdated?: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
+  const [replacementCommand, setReplacementCommand] = useState("");
+
+  const isDeprecated = command.status === "deprecated";
+  const isArchived = command.status === "archived";
+  const isInactive = isDeprecated || isArchived;
+
+  const handleDeprecate = async () => {
+    setLoading(true);
+    try {
+      await invoke("deprecate_command", {
+        path: command.path,
+        replacedBy: replacementCommand || null,
+      });
+      setDeprecateDialogOpen(false);
+      onCommandUpdated?.();
+      onBack();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setLoading(true);
+    try {
+      await invoke("restore_command", { path: command.path });
+      onCommandUpdated?.();
+      onBack();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <ConfigPage>
       <DetailHeader
@@ -1673,7 +1807,37 @@ function CommandDetailView({ command, onBack }: { command: LocalCommand; onBack:
         onBack={onBack}
         path={command.path}
         onOpenPath={(p) => invoke("open_in_editor", { path: p })}
+        badge={command.version ? `v${command.version.replace(/^["']|["']$/g, '')}` : null}
+        statusBadge={
+          isDeprecated ? { label: "deprecated", variant: "warning" as const } :
+          isArchived ? { label: "archived", variant: "muted" as const } :
+          null
+        }
+        menuItems={
+          isInactive
+            ? [{ label: "Restore", onClick: handleRestore, icon: RotateCcw, disabled: loading }]
+            : [{ label: "Deprecate", onClick: () => setDeprecateDialogOpen(true), icon: Archive, variant: "danger" as const }]
+        }
       />
+
+      {/* Deprecation warning */}
+      {isDeprecated && command.deprecated_by && (
+        <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <p className="text-sm text-amber-600">
+            ⚠️ This command is deprecated. Use <span className="font-mono font-medium">{command.deprecated_by}</span> instead.
+          </p>
+        </div>
+      )}
+
+      {/* Archive notice */}
+      {isArchived && (
+        <div className="mb-4 p-3 rounded-lg bg-card-alt border border-border">
+          <p className="text-sm text-muted-foreground">
+            📦 This is an archived version. It is not loaded by Claude Code.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-4">
         {command.argument_hint && (
           <DetailCard label="Arguments">
@@ -1687,6 +1851,38 @@ function CommandDetailView({ command, onBack }: { command: LocalCommand; onBack:
         )}
         <ContentCard label="Content" content={command.content} />
       </div>
+
+      {/* Deprecate dialog */}
+      <Dialog open={deprecateDialogOpen} onOpenChange={setDeprecateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deprecate {command.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              This will rename the file to <code>.md.deprecated</code>, making Claude Code stop loading it.
+            </p>
+            <div>
+              <Label htmlFor="replacement">Replacement command (optional)</Label>
+              <Input
+                id="replacement"
+                placeholder="/new-command"
+                value={replacementCommand}
+                onChange={(e) => setReplacementCommand(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeprecateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleDeprecate} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
+              Deprecate
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ConfigPage>
   );
 }

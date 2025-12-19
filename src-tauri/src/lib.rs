@@ -204,7 +204,7 @@ struct RawMessage {
 // Commands & Settings Types
 // ============================================================================
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LocalCommand {
     pub name: String,
     pub path: String,
@@ -212,6 +212,9 @@ pub struct LocalCommand {
     pub allowed_tools: Option<String>,
     pub argument_hint: Option<String>,
     pub content: String,
+    pub version: Option<String>,
+    pub status: String,                    // "active" | "deprecated" | "archived"
+    pub deprecated_by: Option<String>,     // replacement command name
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -909,24 +912,42 @@ fn collect_commands(base_dir: &PathBuf, current_dir: &PathBuf, commands: &mut Ve
 
         if path.is_dir() {
             collect_commands(base_dir, &path, commands)?;
-        } else if path.extension().map_or(false, |e| e == "md") {
-            let relative = path.strip_prefix(base_dir).unwrap_or(&path);
-            let name = relative.to_string_lossy()
-                .trim_end_matches(".md")
-                .replace("\\", "/")
-                .to_string();
+        } else {
+            let filename = path.file_name().unwrap_or_default().to_string_lossy();
 
-            let content = fs::read_to_string(&path).unwrap_or_default();
-            let (frontmatter, body) = parse_frontmatter(&content);
+            // Determine file type and status
+            let (is_command, status, name_suffix) = if filename.ends_with(".md.deprecated") {
+                (true, "deprecated", ".md.deprecated")
+            } else if filename.ends_with(".md.archived") {
+                (true, "archived", ".md.archived")
+            } else if filename.ends_with(".md") {
+                (true, "active", ".md")
+            } else {
+                (false, "", "")
+            };
 
-            commands.push(LocalCommand {
-                name: format!("/{}", name),
-                path: path.to_string_lossy().to_string(),
-                description: frontmatter.get("description").cloned(),
-                allowed_tools: frontmatter.get("allowed-tools").cloned(),
-                argument_hint: frontmatter.get("argument-hint").cloned(),
-                content: body,
-            });
+            if is_command {
+                let relative = path.strip_prefix(base_dir).unwrap_or(&path);
+                let name = relative.to_string_lossy()
+                    .trim_end_matches(name_suffix)
+                    .replace("\\", "/")
+                    .to_string();
+
+                let content = fs::read_to_string(&path).unwrap_or_default();
+                let (frontmatter, body) = parse_frontmatter(&content);
+
+                commands.push(LocalCommand {
+                    name: format!("/{}", name),
+                    path: path.to_string_lossy().to_string(),
+                    description: frontmatter.get("description").cloned(),
+                    allowed_tools: frontmatter.get("allowed-tools").cloned(),
+                    argument_hint: frontmatter.get("argument-hint").cloned(),
+                    content: body,
+                    version: frontmatter.get("version").cloned(),
+                    status: status.to_string(),
+                    deprecated_by: frontmatter.get("replaced-by").cloned(),
+                });
+            }
         }
     }
     Ok(())
@@ -944,7 +965,9 @@ fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
             for line in fm_content.lines() {
                 if let Some(colon_idx) = line.find(':') {
                     let key = line[..colon_idx].trim().to_string();
-                    let value = line[colon_idx + 1..].trim().to_string();
+                    let value = line[colon_idx + 1..].trim();
+                    // Strip surrounding quotes from YAML values
+                    let value = value.trim_matches('"').trim_matches('\'').to_string();
                     frontmatter.insert(key, value);
                 }
             }
@@ -952,6 +975,106 @@ fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     }
 
     (frontmatter, body)
+}
+
+/// Deprecate a command by renaming it from .md to .md.deprecated
+/// This makes Claude Code stop loading it while preserving the file
+#[tauri::command]
+fn deprecate_command(path: String, replaced_by: Option<String>) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err(format!("Command file not found: {}", path));
+    }
+
+    // Only allow deprecating active .md files
+    if !path.ends_with(".md") || path.ends_with(".deprecated") || path.ends_with(".archived") {
+        return Err("Can only deprecate active .md commands".to_string());
+    }
+
+    // If replaced_by is provided, update frontmatter
+    if let Some(replacement) = &replaced_by {
+        let content = fs::read_to_string(&src).map_err(|e| e.to_string())?;
+        let updated = add_frontmatter_field(&content, "replaced-by", replacement);
+        fs::write(&src, updated).map_err(|e| e.to_string())?;
+    }
+
+    // Rename to .md.deprecated
+    let dest = PathBuf::from(format!("{}.deprecated", path));
+    fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// Archive a command by moving it to versions/ directory with version suffix
+#[tauri::command]
+fn archive_command(path: String, version: String) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err(format!("Command file not found: {}", path));
+    }
+
+    // Get the commands directory and create versions/ if needed
+    let commands_dir = src.parent().unwrap_or(&src);
+    let versions_dir = commands_dir.join("versions");
+    fs::create_dir_all(&versions_dir).map_err(|e| e.to_string())?;
+
+    // Get base name and create versioned filename
+    let filename = src.file_name().unwrap_or_default().to_string_lossy();
+    let base_name = filename.trim_end_matches(".md");
+    let versioned_name = format!("{}.v{}.md.archived", base_name, version);
+    let dest = versions_dir.join(versioned_name);
+
+    fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// Restore a deprecated or archived command to active status
+#[tauri::command]
+fn restore_command(path: String) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err(format!("Command file not found: {}", path));
+    }
+
+    let filename = src.to_string_lossy();
+    let dest_path = if filename.ends_with(".md.deprecated") {
+        // Remove .deprecated suffix
+        filename.trim_end_matches(".deprecated").to_string()
+    } else if filename.ends_with(".md.archived") {
+        // Move from versions/ back to parent and remove version info
+        let parent = src.parent().and_then(|p| p.parent()).unwrap_or(&src);
+        let file_name = src.file_name().unwrap_or_default().to_string_lossy();
+        // Extract base name: "cmd.v1.0.0.md.archived" -> "cmd"
+        let base = file_name.split(".v").next().unwrap_or(&file_name);
+        parent.join(format!("{}.md", base)).to_string_lossy().to_string()
+    } else {
+        return Err("File is not deprecated or archived".to_string());
+    };
+
+    let dest = PathBuf::from(&dest_path);
+
+    // Check if destination already exists
+    if dest.exists() {
+        return Err(format!("Cannot restore: {} already exists", dest_path));
+    }
+
+    fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+
+    Ok(dest_path)
+}
+
+/// Helper to add a field to frontmatter
+fn add_frontmatter_field(content: &str, key: &str, value: &str) -> String {
+    if content.starts_with("---") {
+        if let Some(end_idx) = content[3..].find("---") {
+            let fm_content = &content[3..end_idx + 3];
+            let body = &content[end_idx + 6..];
+            return format!("---\n{}{}: {}\n---{}", fm_content, key, value, body);
+        }
+    }
+    // No frontmatter, add one
+    format!("---\n{}: {}\n---\n\n{}", key, value, content)
 }
 
 // ============================================================================
@@ -2016,6 +2139,9 @@ pub fn run() {
             get_command_stats,
             get_templates_catalog,
             install_command_template,
+            deprecate_command,
+            archive_command,
+            restore_command,
             install_mcp_template,
             uninstall_mcp_template,
             check_mcp_installed,

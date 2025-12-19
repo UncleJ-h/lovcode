@@ -1,7 +1,14 @@
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, ReactNode, ComponentType } from "react";
 import Markdown from "react-markdown";
-import { ExternalLink, Download, MessageCircle } from "lucide-react";
-import { useAppConfig } from "../../App";
+import { ExternalLink, Download, MessageCircle, MoreHorizontal, type LucideProps } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "../ui/dropdown-menu";
+import { Button } from "../ui/button";
 import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths } from "date-fns";
 
 function formatRelativeTime(date: Date): string {
@@ -93,6 +100,14 @@ export function PageHeader({
   );
 }
 
+export interface DetailHeaderMenuItem {
+  label: string;
+  onClick: () => void;
+  icon?: ComponentType<LucideProps>;
+  variant?: "default" | "danger";
+  disabled?: boolean;
+}
+
 export function DetailHeader({
   title,
   description,
@@ -101,6 +116,9 @@ export function DetailHeader({
   path,
   onOpenPath,
   onNavigateSession,
+  badge,
+  statusBadge,
+  menuItems,
 }: {
   title: string;
   description?: string | null;
@@ -109,8 +127,12 @@ export function DetailHeader({
   path?: string;
   onOpenPath?: (path: string) => void;
   onNavigateSession?: () => void;
+  badge?: string | null;
+  statusBadge?: { label: string; variant: "success" | "warning" | "muted" } | null;
+  menuItems?: DetailHeaderMenuItem[];
 }) {
-  const { formatPath } = useAppConfig();
+  const hasMenu = (path && onOpenPath) || onNavigateSession || (menuItems && menuItems.length > 0);
+
   return (
     <header className="mb-6">
       <button
@@ -119,25 +141,63 @@ export function DetailHeader({
       >
         <span>←</span> {backLabel}
       </button>
-      <div className="flex items-center gap-2">
-        <h1 className="font-mono text-2xl font-semibold text-primary">{title}</h1>
-        {path && (
-          <button
-            onClick={() => onOpenPath?.(path)}
-            className="text-muted-foreground hover:text-primary"
-            title={formatPath(path)}
-          >
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        )}
-        {onNavigateSession && (
-          <button
-            onClick={onNavigateSession}
-            className="text-muted-foreground hover:text-primary"
-            title="Go to session"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h1 className="font-mono text-2xl font-semibold text-primary">{title}</h1>
+          {badge && (
+            <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
+              {badge}
+            </span>
+          )}
+          {statusBadge && (
+            <span className={`text-xs px-2 py-0.5 rounded ${
+              statusBadge.variant === "success" ? "bg-green-500/20 text-green-600" :
+              statusBadge.variant === "warning" ? "bg-amber-500/20 text-amber-600" :
+              "bg-card-alt text-muted-foreground"
+            }`}>
+              {statusBadge.label}
+            </span>
+          )}
+        </div>
+        {hasMenu && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {path && onOpenPath && (
+                <DropdownMenuItem onClick={() => onOpenPath(path)}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open in Editor
+                </DropdownMenuItem>
+              )}
+              {onNavigateSession && (
+                <DropdownMenuItem onClick={onNavigateSession}>
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Go to Session
+                </DropdownMenuItem>
+              )}
+              {((path && onOpenPath) || onNavigateSession) && menuItems && menuItems.length > 0 && (
+                <DropdownMenuSeparator />
+              )}
+              {menuItems?.map((item, i) => {
+                const Icon = item.icon;
+                return (
+                  <DropdownMenuItem
+                    key={i}
+                    onClick={item.onClick}
+                    disabled={item.disabled}
+                    className={item.variant === "danger" ? "text-amber-600" : ""}
+                  >
+                    {Icon && <Icon className="w-4 h-4 mr-2" />}
+                    {item.label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       {description && <p className="text-muted-foreground mt-2">{description}</p>}
