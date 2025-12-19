@@ -980,7 +980,7 @@ fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
 /// Deprecate a command by renaming it from .md to .md.deprecated
 /// This makes Claude Code stop loading it while preserving the file
 #[tauri::command]
-fn deprecate_command(path: String, replaced_by: Option<String>) -> Result<String, String> {
+fn deprecate_command(path: String, replaced_by: Option<String>, note: Option<String>) -> Result<String, String> {
     let src = PathBuf::from(&path);
     if !src.exists() {
         return Err(format!("Command file not found: {}", path));
@@ -991,10 +991,16 @@ fn deprecate_command(path: String, replaced_by: Option<String>) -> Result<String
         return Err("Can only deprecate active .md commands".to_string());
     }
 
-    // If replaced_by is provided, update frontmatter
+    // Update frontmatter with replaced_by and/or note
+    let content = fs::read_to_string(&src).map_err(|e| e.to_string())?;
+    let mut updated = content.clone();
     if let Some(replacement) = &replaced_by {
-        let content = fs::read_to_string(&src).map_err(|e| e.to_string())?;
-        let updated = add_frontmatter_field(&content, "replaced-by", replacement);
+        updated = add_frontmatter_field(&updated, "replaced-by", replacement);
+    }
+    if let Some(n) = &note {
+        updated = add_frontmatter_field(&updated, "deprecation-note", n);
+    }
+    if updated != content {
         fs::write(&src, updated).map_err(|e| e.to_string())?;
     }
 

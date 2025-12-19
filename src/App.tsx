@@ -1578,7 +1578,47 @@ function CommandsView({
   const [showDeprecated, setShowDeprecated] = useState(false);
   const [viewMode, setViewMode] = useState<"flat" | "tree">("flat");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState<LocalCommand | null>(null);
+  const [replacementCommand, setReplacementCommand] = useState("");
+  const [deprecationNote, setDeprecationNote] = useState("");
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
+
+  const refreshCommands = () => {
+    invoke<LocalCommand[]>("list_local_commands").then(setCommands);
+  };
+
+  const handleDeprecate = async () => {
+    if (!selectedCommand) return;
+    try {
+      await invoke("deprecate_command", {
+        path: selectedCommand.path,
+        replacedBy: replacementCommand || null,
+        note: deprecationNote || null,
+      });
+      setDeprecateDialogOpen(false);
+      setSelectedCommand(null);
+      setReplacementCommand("");
+      setDeprecationNote("");
+      refreshCommands();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRestore = async (cmd: LocalCommand) => {
+    try {
+      await invoke("restore_command", { path: cmd.path });
+      refreshCommands();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const openDeprecateDialog = (cmd: LocalCommand) => {
+    setSelectedCommand(cmd);
+    setDeprecateDialogOpen(true);
+  };
 
   useEffect(() => {
     // Load commands first for instant display
@@ -1675,13 +1715,25 @@ function CommandsView({
       }
     }
 
-    // Sort: folders first, then commands, alphabetically
+    // Sort: folders first (alphabetically), then commands (by sortKey/sortDir)
     const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
       return nodes.sort((a, b) => {
         if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
-        const nameA = a.type === "folder" ? a.name : a.command.name;
-        const nameB = b.type === "folder" ? b.name : b.command.name;
-        return nameA.localeCompare(nameB);
+        if (a.type === "folder" && b.type === "folder") {
+          return a.name.localeCompare(b.name);
+        }
+        // Both are commands
+        if (a.type === "command" && b.type === "command") {
+          if (sortKey === "usage") {
+            const aCount = commandStats[a.command.name] || 0;
+            const bCount = commandStats[b.command.name] || 0;
+            return sortDir === "desc" ? bCount - aCount : aCount - bCount;
+          } else {
+            const cmp = a.command.name.localeCompare(b.command.name);
+            return sortDir === "desc" ? -cmp : cmp;
+          }
+        }
+        return 0;
       }).map(node => node.type === "folder" ? { ...node, children: sortNodes(node.children) } : node);
     };
 
@@ -1707,6 +1759,9 @@ function CommandsView({
             command={node.command}
             usageCount={commandStats[node.command.name]}
             onClick={() => onSelect(node.command)}
+            onOpenInEditor={() => invoke("open_in_editor", { path: node.command.path })}
+            onDeprecate={() => openDeprecateDialog(node.command)}
+            onRestore={() => handleRestore(node.command)}
           />
         </div>
       );
@@ -1738,7 +1793,7 @@ function CommandsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Commands" subtitle={`${activeCount} active, ${deprecatedCount} deprecated/archived`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
+      <PageHeader title="Commands" subtitle={`${activeCount} active, ${deprecatedCount} deprecated`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <div className="flex items-center gap-3 mb-6">
         <SearchInput
           placeholder="Search local & marketplace..."
@@ -1762,22 +1817,18 @@ function CommandsView({
                 <FolderTree className="w-4 h-4 mr-2" /> Tree
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
-            {viewMode === "flat" && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs">Sort</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => toggleSort("usage")}>
-                  {sortKey === "usage" && <Check className="w-4 h-4 mr-2" />}
-                  {sortKey !== "usage" && <span className="w-4 mr-2" />}
-                  Usage {sortKey === "usage" && (sortDir === "desc" ? "↓" : "↑")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toggleSort("name")}>
-                  {sortKey === "name" && <Check className="w-4 h-4 mr-2" />}
-                  {sortKey !== "name" && <span className="w-4 mr-2" />}
-                  Name {sortKey === "name" && (sortDir === "desc" ? "↓" : "↑")}
-                </DropdownMenuItem>
-              </>
-            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs">Sort</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => toggleSort("usage")}>
+              {sortKey === "usage" && <Check className="w-4 h-4 mr-2" />}
+              {sortKey !== "usage" && <span className="w-4 mr-2" />}
+              Usage {sortKey === "usage" && (sortDir === "desc" ? "↓" : "↑")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toggleSort("name")}>
+              {sortKey === "name" && <Check className="w-4 h-4 mr-2" />}
+              {sortKey !== "name" && <span className="w-4 mr-2" />}
+              Name {sortKey === "name" && (sortDir === "desc" ? "↓" : "↑")}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem checked={showDeprecated} onCheckedChange={setShowDeprecated}>
               Show deprecated
@@ -1795,6 +1846,9 @@ function CommandsView({
               command={cmd}
               usageCount={commandStats[cmd.name]}
               onClick={() => onSelect(cmd)}
+              onOpenInEditor={() => invoke("open_in_editor", { path: cmd.path })}
+              onDeprecate={() => openDeprecateDialog(cmd)}
+              onRestore={() => handleRestore(cmd)}
             />
           ))}
         </div>
@@ -1815,6 +1869,48 @@ function CommandsView({
 
       {/* Marketplace results */}
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
+
+      {/* Deprecate dialog */}
+      <Dialog open={deprecateDialogOpen} onOpenChange={setDeprecateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deprecate {selectedCommand?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              This will rename the file to <code>.md.deprecated</code>, making Claude Code stop loading it.
+            </p>
+            <div>
+              <Label htmlFor="replacement">Replacement command (optional)</Label>
+              <Input
+                id="replacement"
+                placeholder="/new-command"
+                value={replacementCommand}
+                onChange={(e) => setReplacementCommand(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deprecation-note">Note (optional)</Label>
+              <Input
+                id="deprecation-note"
+                placeholder="Reason for deprecation..."
+                value={deprecationNote}
+                onChange={(e) => setDeprecationNote(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeprecateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleDeprecate} className="bg-amber-600 hover:bg-amber-700">
+              Deprecate
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ConfigPage>
   );
 }
@@ -1823,18 +1919,23 @@ function CommandItemCard({
   command,
   usageCount,
   onClick,
+  onOpenInEditor,
+  onDeprecate,
+  onRestore,
 }: {
   command: LocalCommand;
   usageCount?: number;
   onClick: () => void;
+  onOpenInEditor?: () => void;
+  onDeprecate?: () => void;
+  onRestore?: () => void;
 }) {
   const isDeprecated = command.status === "deprecated";
   const isArchived = command.status === "archived";
   const isInactive = isDeprecated || isArchived;
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={`w-full text-left rounded-xl p-4 border transition-colors ${
         isInactive
           ? "bg-card-alt border-dashed border-border/50 opacity-70 hover:opacity-100"
@@ -1842,7 +1943,7 @@ function CommandItemCard({
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
+        <button onClick={onClick} className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-2">
             <p className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
               {command.name}
@@ -1864,26 +1965,56 @@ function CommandItemCard({
               → Use {command.deprecated_by} instead
             </p>
           )}
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          {isDeprecated && (
-            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-600">
-              deprecated
-            </span>
-          )}
-          {isArchived && (
-            <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
-              archived
-            </span>
-          )}
-          {!isInactive && command.argument_hint && (
-            <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
-              {command.argument_hint}
-            </span>
-          )}
+        </button>
+        <div className="flex items-start gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-1">
+            {isDeprecated && (
+              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-600">
+                deprecated
+              </span>
+            )}
+            {isArchived && (
+              <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
+                archived
+              </span>
+            )}
+            {!isInactive && command.argument_hint && (
+              <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
+                {command.argument_hint}
+              </span>
+            )}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onOpenInEditor && (
+                <DropdownMenuItem onClick={onOpenInEditor}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open in Editor
+                </DropdownMenuItem>
+              )}
+              {onOpenInEditor && (onDeprecate || onRestore) && <DropdownMenuSeparator />}
+              {isInactive && onRestore && (
+                <DropdownMenuItem onClick={onRestore}>
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Restore
+                </DropdownMenuItem>
+              )}
+              {!isInactive && onDeprecate && (
+                <DropdownMenuItem onClick={onDeprecate} className="text-amber-600">
+                  <Archive className="w-4 h-4 mr-2" />
+                  Deprecate
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -1899,6 +2030,7 @@ function CommandDetailView({
   const [loading, setLoading] = useState(false);
   const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
   const [replacementCommand, setReplacementCommand] = useState("");
+  const [deprecationNote, setDeprecationNote] = useState("");
 
   const isDeprecated = command.status === "deprecated";
   const isArchived = command.status === "archived";
@@ -1910,6 +2042,7 @@ function CommandDetailView({
       await invoke("deprecate_command", {
         path: command.path,
         replacedBy: replacementCommand || null,
+        note: deprecationNote || null,
       });
       setDeprecateDialogOpen(false);
       onCommandUpdated?.();
@@ -2001,6 +2134,16 @@ function CommandDetailView({
                 placeholder="/new-command"
                 value={replacementCommand}
                 onChange={(e) => setReplacementCommand(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="deprecation-note">Note (optional)</Label>
+              <Input
+                id="deprecation-note"
+                placeholder="Reason for deprecation..."
+                value={deprecationNote}
+                onChange={(e) => setDeprecationNote(e.target.value)}
                 className="mt-1"
               />
             </div>
