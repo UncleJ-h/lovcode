@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronLeft, ChevronDown, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { ChevronLeft, ChevronDown, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Copy, Check } from "lucide-react";
 import { startCase } from "lodash-es";
 
 function slugify(text: string): string {
@@ -384,6 +386,76 @@ function HeadingsSidebar({
 }
 
 // ============================================================================
+// Code Block Component
+// ============================================================================
+
+function CodeBlock({
+  children,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || "");
+  const language = match ? match[1] : "";
+  const codeString = String(children).replace(/\n$/, "");
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Inline code
+  if (!match) {
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  // Code block
+  return (
+    <div className="relative group not-prose my-4">
+      {/* Header with language and copy button */}
+      <div className="flex items-center justify-between px-4 py-2 bg-[#1e1e1e] border-b border-white/10 rounded-t-xl">
+        <span className="text-xs text-gray-400 font-mono">{language || "text"}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-white rounded transition-colors"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      {/* Code content */}
+      <SyntaxHighlighter
+        style={oneDark}
+        language={language}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: "0 0 0.75rem 0.75rem",
+          fontSize: "0.875rem",
+          lineHeight: 1.6,
+        }}
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+// ============================================================================
 // Document Content Component
 // ============================================================================
 
@@ -432,7 +504,8 @@ function DocumentContent({
     if (typeof children === "number") return String(children);
     if (Array.isArray(children)) return children.map(getTextFromChildren).join("");
     if (children && typeof children === "object" && "props" in children) {
-      return getTextFromChildren((children as React.ReactElement).props.children);
+      const el = children as React.ReactElement<{ children?: React.ReactNode }>;
+      return getTextFromChildren(el.props.children);
     }
     return "";
   };
@@ -468,6 +541,7 @@ function DocumentContent({
       h4: createHeading("h4"),
       h5: createHeading("h5"),
       h6: createHeading("h6"),
+      code: CodeBlock,
     };
   }, [getHeadingId, onHeadingRender]);
 
@@ -493,7 +567,6 @@ function DocumentContent({
           prose-a:text-primary prose-a:no-underline hover:prose-a:underline
           prose-strong:text-ink prose-strong:font-semibold
           prose-code:text-primary prose-code:bg-card-alt prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:before:content-[''] prose-code:after:content-['']
-          prose-pre:bg-card-alt prose-pre:border prose-pre:border-border prose-pre:rounded-xl prose-pre:shadow-sm
           prose-blockquote:border-l-primary prose-blockquote:bg-card-alt/50 prose-blockquote:py-1 prose-blockquote:rounded-r-lg prose-blockquote:not-italic
           prose-ul:my-4 prose-ol:my-4 prose-li:my-1
           prose-hr:border-border
@@ -533,7 +606,6 @@ export function DocumentReader({
 
   const progress = useReadingProgress(scrollContainerRef);
   const headings = useMemo(() => extractHeadings(content), [content]);
-  const currentDoc = documents[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < documents.length - 1;
 
