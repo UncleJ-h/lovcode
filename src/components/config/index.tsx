@@ -1,6 +1,6 @@
 import { useState, useEffect, ReactNode } from "react";
 import Markdown from "react-markdown";
-import { ExternalLink, Download } from "lucide-react";
+import { ExternalLink, Download, MessageCircle } from "lucide-react";
 import { useAppConfig } from "../../App";
 
 // ============================================================================
@@ -84,6 +84,7 @@ export function DetailHeader({
   onBack,
   path,
   onOpenPath,
+  onNavigateSession,
 }: {
   title: string;
   description?: string | null;
@@ -91,6 +92,7 @@ export function DetailHeader({
   onBack: () => void;
   path?: string;
   onOpenPath?: (path: string) => void;
+  onNavigateSession?: () => void;
 }) {
   const { formatPath } = useAppConfig();
   return (
@@ -110,6 +112,15 @@ export function DetailHeader({
             title={formatPath(path)}
           >
             <ExternalLink className="w-4 h-4" />
+          </button>
+        )}
+        {onNavigateSession && (
+          <button
+            onClick={onNavigateSession}
+            className="text-muted hover:text-primary"
+            title="Go to session"
+          >
+            <MessageCircle className="w-4 h-4" />
           </button>
         )}
       </div>

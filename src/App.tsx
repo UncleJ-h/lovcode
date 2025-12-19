@@ -696,6 +696,9 @@ function App() {
           <DistillDetailView
             document={view.document}
             onBack={() => setView({ type: "kb-distill" })}
+            onNavigateSession={(projectId, sessionId, summary) =>
+              setView({ type: "chat-messages", projectId, sessionId, summary })
+            }
           />
         )}
 
@@ -1269,9 +1272,11 @@ function DistillView({
 function DistillDetailView({
   document,
   onBack,
+  onNavigateSession,
 }: {
   document: DistillDocument;
   onBack: () => void;
+  onNavigateSession: (projectId: string, sessionId: string, summary: string | null) => void;
 }) {
   const { homeDir } = useAppConfig();
   const [content, setContent] = useState<string>("");
@@ -1282,6 +1287,13 @@ function DistillDetailView({
       .then(setContent)
       .finally(() => setLoading(false));
   }, [document.file]);
+
+  const handleNavigateSession = async () => {
+    const session = await invoke<Session | null>("find_session_project", { sessionId: document.session });
+    if (session) {
+      onNavigateSession(session.project_id, session.id, session.summary);
+    }
+  };
 
   if (loading) return <LoadingState message="Loading document..." />;
 
@@ -1296,12 +1308,13 @@ function DistillDetailView({
         onBack={onBack}
         path={distillPath}
         onOpenPath={(p) => invoke("open_in_editor", { path: p.replace("~", homeDir) })}
+        onNavigateSession={handleNavigateSession}
       />
       <div className="space-y-4">
         <DetailCard label="Metadata">
           <div className="space-y-2 text-sm">
             <p className="text-muted">Date: <span className="text-ink">{document.date}</span></p>
-            <p className="text-muted">Session: <span className="font-mono text-xs text-ink">{document.session.slice(0, 8)}...</span></p>
+            <p className="text-muted">Session: <button onClick={handleNavigateSession} className="font-mono text-xs text-primary hover:underline">{document.session.slice(0, 8)}...</button></p>
           </div>
         </DetailCard>
         <ContentCard label="Content" content={content} />
@@ -3020,7 +3033,7 @@ function MessageView({
         >
           <span>←</span> Sessions
         </button>
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-2">
           <h1 className="font-serif text-2xl font-semibold text-ink leading-tight">
             {summary || "Session"}
           </h1>
@@ -3032,6 +3045,13 @@ function MessageView({
             <FolderOpen size={18} />
           </button>
         </div>
+        <button
+          onClick={() => invoke("open_session_in_editor", { projectId, sessionId })}
+          className="text-primary text-xs font-mono mb-6 hover:underline"
+          title="Open in editor"
+        >
+          {sessionId}
+        </button>
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <span className={groupLabel}>View</span>

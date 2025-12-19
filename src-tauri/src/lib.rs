@@ -1065,6 +1065,50 @@ fn get_distill_document(file: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn find_session_project(session_id: String) -> Result<Option<Session>, String> {
+    let projects_dir = get_claude_dir().join("projects");
+    if !projects_dir.exists() {
+        return Ok(None);
+    }
+
+    for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_entry = project_entry.map_err(|e| e.to_string())?;
+        let project_path = project_entry.path();
+
+        if !project_path.is_dir() {
+            continue;
+        }
+
+        let session_file = project_path.join(format!("{}.jsonl", session_id));
+        if session_file.exists() {
+            let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+            let display_path = decode_project_path(&project_id);
+            let content = fs::read_to_string(&session_file).unwrap_or_default();
+
+            let mut summary = None;
+            for line in content.lines() {
+                if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
+                    if parsed.line_type.as_deref() == Some("summary") {
+                        summary = parsed.summary;
+                        break;
+                    }
+                }
+            }
+
+            return Ok(Some(Session {
+                id: session_id,
+                project_id,
+                project_path: Some(display_path),
+                summary,
+                message_count: 0,
+                last_modified: 0,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 fn get_distill_command_file() -> Result<String, String> {
     let cmd_path = get_claude_dir().join("commands/distill.md");
 
@@ -1591,12 +1635,25 @@ fn get_settings() -> Result<ClaudeSettings, String> {
     })
 }
 
+fn get_session_path(project_id: &str, session_id: &str) -> PathBuf {
+    get_claude_dir()
+        .join("projects")
+        .join(project_id)
+        .join(format!("{}.jsonl", session_id))
+}
+
+#[tauri::command]
+fn open_session_in_editor(project_id: String, session_id: String) -> Result<(), String> {
+    let path = get_session_path(&project_id, &session_id);
+    if !path.exists() {
+        return Err("Session file not found".to_string());
+    }
+    open_in_editor(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn reveal_session_file(project_id: String, session_id: String) -> Result<(), String> {
-    let session_path = get_claude_dir()
-        .join("projects")
-        .join(&project_id)
-        .join(format!("{}.jsonl", session_id));
+    let session_path = get_session_path(&project_id, &session_id);
 
     if !session_path.exists() {
         return Err("Session file not found".to_string());
@@ -1781,6 +1838,7 @@ pub fn run() {
             install_hook_template,
             install_setting_template,
             open_in_editor,
+            open_session_in_editor,
             reveal_session_file,
             get_settings_path,
             get_mcp_config_path,
@@ -1789,6 +1847,7 @@ pub fn run() {
             update_mcp_env,
             list_distill_documents,
             get_distill_document,
+            find_session_project,
             get_distill_command_file
         ])
         .run(tauri::generate_context!())
