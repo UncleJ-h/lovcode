@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -308,6 +308,50 @@ function App() {
     }
     return { type: "home" };
   });
+  const [viewHistory, setViewHistory] = useState<View[]>(() => {
+    const saved = localStorage.getItem("lovcode-view");
+    if (saved) {
+      try {
+        return [JSON.parse(saved) as View];
+      } catch {
+        return [{ type: "home" }];
+      }
+    }
+    return [{ type: "home" }];
+  });
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  const navigate = useCallback((newView: View) => {
+    setViewHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(newView);
+      // Limit history size
+      if (newHistory.length > 50) newHistory.shift();
+      return newHistory;
+    });
+    setHistoryIndex(prev => Math.min(prev + 1, 49));
+    setView(newView);
+  }, [historyIndex]);
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < viewHistory.length - 1;
+
+  const goBack = useCallback(() => {
+    if (canGoBack) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setView(viewHistory[newIndex]);
+    }
+  }, [canGoBack, historyIndex, viewHistory]);
+
+  const goForward = useCallback(() => {
+    if (canGoForward) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setView(viewHistory[newIndex]);
+    }
+  }, [canGoForward, historyIndex, viewHistory]);
+
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState("lovcode:sidebarCollapsed", false);
   const [marketplaceCategory, setMarketplaceCategory] = usePersistedState<TemplateCategory>("lovcode:marketplaceCategory", "commands");
   const [catalog, setCatalog] = useState<TemplatesCatalog | null>(null);
@@ -381,43 +425,43 @@ function App() {
   const handleFeatureClick = (feature: FeatureType) => {
     switch (feature) {
       case "chat":
-        setView({ type: "chat-projects" });
+        navigate({ type: "chat-projects" });
         break;
       case "settings":
-        setView({ type: "settings" });
+        navigate({ type: "settings" });
         break;
       case "commands":
-        setView({ type: "commands" });
+        navigate({ type: "commands" });
         break;
       case "mcp":
-        setView({ type: "mcp" });
+        navigate({ type: "mcp" });
         break;
       case "skills":
-        setView({ type: "skills" });
+        navigate({ type: "skills" });
         break;
       case "hooks":
-        setView({ type: "hooks" });
+        navigate({ type: "hooks" });
         break;
       case "sub-agents":
-        setView({ type: "sub-agents" });
+        navigate({ type: "sub-agents" });
         break;
       case "output-styles":
-        setView({ type: "output-styles" });
+        navigate({ type: "output-styles" });
         break;
       case "kb-distill":
-        setView({ type: "kb-distill" });
+        navigate({ type: "kb-distill" });
         break;
       case "kb-notes":
-        setView({ type: "kb-notes" });
+        navigate({ type: "kb-notes" });
         break;
       case "kb-bookmarks":
-        setView({ type: "kb-bookmarks" });
+        navigate({ type: "kb-bookmarks" });
         break;
       case "marketplace":
-        setView({ type: "marketplace" });
+        navigate({ type: "marketplace" });
         break;
       default:
-        setView({ type: "feature-todo", feature });
+        navigate({ type: "feature-todo", feature });
     }
   };
 
@@ -441,7 +485,7 @@ function App() {
           {/* Home */}
           <div className="px-2 mb-2">
             <button
-              onClick={() => setView({ type: "home" })}
+              onClick={() => navigate({ type: "home" })}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                 view.type === "home"
                   ? "bg-primary/10 text-primary"
@@ -529,14 +573,34 @@ function App() {
           data-tauri-drag-region
           className="h-[52px] shrink-0 flex items-center justify-between border-b border-border bg-card"
         >
-          <div className={`pl-[92px] transition-opacity duration-300 ${sidebarCollapsed ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+          <div className={`flex items-center gap-1 ${sidebarCollapsed ? "pl-[92px]" : "pl-3"}`}>
+            {/* Expand sidebar button - only when collapsed */}
             <button
               onClick={() => setSidebarCollapsed(false)}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt"
+              className={`p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt transition-opacity duration-300 ${sidebarCollapsed ? "opacity-100" : "opacity-0 pointer-events-none w-0 p-0"}`}
               title="Expand sidebar"
             >
               <PanelLeft className="w-4 h-4" />
             </button>
+            {/* Navigation buttons */}
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={goBack}
+                disabled={!canGoBack}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt disabled:opacity-30 disabled:pointer-events-none"
+                title="Go back"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={goForward}
+                disabled={!canGoForward}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt disabled:opacity-30 disabled:pointer-events-none"
+                title="Go forward"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Profile Button */}
@@ -582,18 +646,18 @@ function App() {
 
         {view.type === "chat-projects" && (
           <ProjectList
-            onSelectProject={(p) => setView({
+            onSelectProject={(p) => navigate({
               type: "chat-sessions",
               projectId: p.id,
               projectPath: p.path
             })}
-            onSelectSession={(s) => setView({
+            onSelectSession={(s) => navigate({
               type: "chat-messages",
               projectId: s.project_id,
               sessionId: s.id,
               summary: s.summary
             })}
-            onSelectChat={(c) => setView({
+            onSelectChat={(c) => navigate({
               type: "chat-messages",
               projectId: c.project_id,
               sessionId: c.session_id,
@@ -606,8 +670,8 @@ function App() {
           <SessionList
             projectId={view.projectId}
             projectPath={view.projectPath}
-            onBack={() => setView({ type: "chat-projects" })}
-            onSelect={(s) => setView({
+            onBack={() => navigate({ type: "chat-projects" })}
+            onSelect={(s) => navigate({
               type: "chat-messages",
               projectId: s.project_id,
               sessionId: s.id,
@@ -621,7 +685,7 @@ function App() {
             projectId={view.projectId}
             sessionId={view.sessionId}
             summary={view.summary}
-            onBack={() => setView({
+            onBack={() => navigate({
               type: "chat-sessions",
               projectId: view.projectId,
               projectPath: ""
@@ -631,11 +695,11 @@ function App() {
 
         {view.type === "commands" && (
           <CommandsView
-            onSelect={(cmd) => setView({ type: "command-detail", command: cmd })}
+            onSelect={(cmd) => navigate({ type: "command-detail", command: cmd })}
             marketplaceItems={catalog?.commands || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.commands.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "commands" });
+              if (template) navigate({ type: "template-detail", template, category: "commands" });
             }}
           />
         )}
@@ -643,7 +707,7 @@ function App() {
         {view.type === "command-detail" && (
           <CommandDetailView
             command={view.command}
-            onBack={() => setView({ type: "commands" })}
+            onBack={() => navigate({ type: "commands" })}
           />
         )}
 
@@ -652,18 +716,18 @@ function App() {
             marketplaceItems={catalog?.mcps || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.mcps.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "mcps" });
+              if (template) navigate({ type: "template-detail", template, category: "mcps" });
             }}
           />
         )}
 
         {view.type === "skills" && (
           <SkillsView
-            onSelect={(skill) => setView({ type: "skill-detail", skill })}
+            onSelect={(skill) => navigate({ type: "skill-detail", skill })}
             marketplaceItems={catalog?.skills || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.skills.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "skills" });
+              if (template) navigate({ type: "template-detail", template, category: "skills" });
             }}
           />
         )}
@@ -671,7 +735,7 @@ function App() {
         {view.type === "skill-detail" && (
           <SkillDetailView
             skill={view.skill}
-            onBack={() => setView({ type: "skills" })}
+            onBack={() => navigate({ type: "skills" })}
           />
         )}
 
@@ -680,18 +744,18 @@ function App() {
             marketplaceItems={catalog?.hooks || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.hooks.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "hooks" });
+              if (template) navigate({ type: "template-detail", template, category: "hooks" });
             }}
           />
         )}
 
         {view.type === "sub-agents" && (
           <SubAgentsView
-            onSelect={(agent) => setView({ type: "sub-agent-detail", agent })}
+            onSelect={(agent) => navigate({ type: "sub-agent-detail", agent })}
             marketplaceItems={catalog?.agents || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.agents.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "agents" });
+              if (template) navigate({ type: "template-detail", template, category: "agents" });
             }}
           />
         )}
@@ -699,7 +763,7 @@ function App() {
         {view.type === "sub-agent-detail" && (
           <SubAgentDetailView
             agent={view.agent}
-            onBack={() => setView({ type: "sub-agents" })}
+            onBack={() => navigate({ type: "sub-agents" })}
           />
         )}
 
@@ -709,7 +773,7 @@ function App() {
 
         {view.type === "kb-distill" && (
           <DistillView
-            onSelect={(doc) => setView({ type: "kb-distill-detail", document: doc })}
+            onSelect={(doc) => navigate({ type: "kb-distill-detail", document: doc })}
             watchEnabled={distillWatchEnabled}
             onWatchToggle={(enabled) => {
               setDistillWatchEnabled(enabled);
@@ -721,9 +785,9 @@ function App() {
         {view.type === "kb-distill-detail" && (
           <DistillDetailView
             document={view.document}
-            onBack={() => setView({ type: "kb-distill" })}
+            onBack={() => navigate({ type: "kb-distill" })}
             onNavigateSession={(projectId, sessionId, summary) =>
-              setView({ type: "chat-messages", projectId, sessionId, summary })
+              navigate({ type: "chat-messages", projectId, sessionId, summary })
             }
           />
         )}
@@ -777,7 +841,7 @@ function App() {
             marketplaceItems={catalog?.settings || []}
             onMarketplaceSelect={(item) => {
               const template = catalog?.settings.find(c => c.path === item.path);
-              if (template) setView({ type: "template-detail", template, category: "settings" });
+              if (template) navigate({ type: "template-detail", template, category: "settings" });
             }}
           />
         )}
@@ -787,11 +851,11 @@ function App() {
             initialCategory={view.category ?? marketplaceCategory}
             onSelectTemplate={(template, category) => {
               setMarketplaceCategory(category);
-              setView({ type: "template-detail", template, category });
+              navigate({ type: "template-detail", template, category });
             }}
             onCategoryChange={(category) => {
               setMarketplaceCategory(category);
-              setView({ type: "marketplace", category });
+              navigate({ type: "marketplace", category });
             }}
           />
         )}
@@ -800,8 +864,8 @@ function App() {
           <TemplateDetailView
             template={view.template}
             category={view.category}
-            onBack={() => setView({ type: "marketplace", category: marketplaceCategory })}
-            onNavigateToInstalled={view.category === "mcps" ? () => setView({ type: "mcp" }) : undefined}
+            onBack={() => navigate({ type: "marketplace", category: marketplaceCategory })}
+            onNavigateToInstalled={view.category === "mcps" ? () => navigate({ type: "mcp" }) : undefined}
           />
         )}
 
