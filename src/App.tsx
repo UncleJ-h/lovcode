@@ -773,6 +773,11 @@ function App() {
             onCommandUpdated={() => {
               // Will refresh when navigating back to commands view
             }}
+            onRenamed={async (newPath: string) => {
+              const commands = await invoke<LocalCommand[]>("list_local_commands");
+              const cmd = commands.find(c => c.path === newPath);
+              if (cmd) navigate({ type: "command-detail", command: cmd });
+            }}
             scrollToChangelog={view.scrollToChangelog}
           />
         )}
@@ -2360,11 +2365,13 @@ function CommandDetailView({
   command,
   onBack,
   onCommandUpdated,
+  onRenamed,
   scrollToChangelog: shouldScrollToChangelog,
 }: {
   command: LocalCommand;
   onBack: () => void;
   onCommandUpdated?: () => void;
+  onRenamed?: (newPath: string) => void;
   scrollToChangelog?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
@@ -2375,6 +2382,12 @@ function CommandDetailView({
   const [editingAliases, setEditingAliases] = useState(false);
   const [localAliases, setLocalAliases] = useState(command.aliases);
   const [aliasesInput, setAliasesInput] = useState(command.aliases.join(", "));
+
+  // Sync aliases when command changes (e.g., after rename)
+  useEffect(() => {
+    setLocalAliases(command.aliases);
+    setAliasesInput(command.aliases.join(", "));
+  }, [command.aliases]);
 
   const isDeprecated = command.status === "deprecated";
   const isArchived = command.status === "archived";
@@ -2460,6 +2473,15 @@ function CommandDetailView({
     }
   };
 
+  const handleRename = async (newName: string) => {
+    try {
+      const newPath = await invoke<string>("rename_command", { path: command.path, newName });
+      onRenamed?.(newPath);
+    } catch (e) {
+      console.error("Failed to rename command:", e);
+    }
+  };
+
   return (
     <ConfigPage>
       <DetailHeader
@@ -2482,6 +2504,7 @@ function CommandDetailView({
         }
         hasChangelog={!!command.changelog}
         onChangelogClick={scrollToChangelog}
+        onRename={isInactive ? undefined : handleRename}
       />
 
       {/* Deprecation warning */}

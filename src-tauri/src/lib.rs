@@ -1158,6 +1158,169 @@ fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     (frontmatter, body)
 }
 
+/// Rename a command file
+#[tauri::command]
+fn rename_command(path: String, new_name: String) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err(format!("Command file not found: {}", path));
+    }
+
+    if !path.ends_with(".md") {
+        return Err("Can only rename .md commands".to_string());
+    }
+
+    // Extract just the filename part (last segment after /)
+    let name = new_name.trim().trim_start_matches('/');
+    if name.is_empty() {
+        return Err("New name cannot be empty".to_string());
+    }
+
+    // Get just the last part if it contains path separators
+    let basename = name.rsplit('/').next().unwrap_or(name);
+    if basename.is_empty() {
+        return Err("New name cannot be empty".to_string());
+    }
+
+    let new_filename = if basename.ends_with(".md") {
+        basename.to_string()
+    } else {
+        format!("{}.md", basename)
+    };
+
+    let dest = src.parent()
+        .ok_or("Cannot get parent directory")?
+        .join(&new_filename);
+
+    if dest.exists() && dest != src {
+        return Err(format!("A command with name '{}' already exists", new_filename));
+    }
+
+    if dest != src {
+        let commands_dir = get_claude_dir().join("commands");
+
+        // Calculate old command name (derive from filename without .md)
+        let old_basename = src.file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("Cannot get old filename")?;
+        let old_name = if let Ok(relative) = src.parent().unwrap_or(&src).strip_prefix(&commands_dir) {
+            if relative.as_os_str().is_empty() {
+                format!("/{}", old_basename)
+            } else {
+                format!("/{}/{}", relative.to_string_lossy(), old_basename)
+            }
+        } else {
+            format!("/{}", old_basename)
+        };
+
+        // Calculate new command name
+        let new_basename = dest.file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("Cannot get new filename")?;
+        let new_name = if let Ok(relative) = dest.parent().unwrap_or(&dest).strip_prefix(&commands_dir) {
+            if relative.as_os_str().is_empty() {
+                format!("/{}", new_basename)
+            } else {
+                format!("/{}/{}", relative.to_string_lossy(), new_basename)
+            }
+        } else {
+            format!("/{}", new_basename)
+        };
+
+        // Update aliases: add old name, remove new name if it was an alias
+        let content = fs::read_to_string(&src).map_err(|e| e.to_string())?;
+        let updated = update_aliases_on_rename(&content, &old_name, &new_name);
+        if updated != content {
+            fs::write(&src, &updated).map_err(|e| e.to_string())?;
+        }
+
+        fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+
+        // Also rename associated .changelog file if exists
+        let changelog_src = src.with_extension("changelog");
+        if changelog_src.exists() {
+            let changelog_dest = dest.with_extension("changelog");
+            let _ = fs::rename(&changelog_src, &changelog_dest);
+        }
+    }
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+fn update_aliases_on_rename(content: &str, old_name: &str, new_name: &str) -> String {
+    // Parse existing aliases from frontmatter
+    let (existing_aliases, has_frontmatter) = if content.starts_with("---") {
+        let parts: Vec<&str> = content.splitn(3, "---").collect();
+        if parts.len() >= 3 {
+            let frontmatter = parts[1];
+            if let Some(line) = frontmatter.lines().find(|l| l.trim_start().starts_with("aliases:")) {
+                let value_part = line.split(':').nth(1).unwrap_or("").trim();
+                let aliases: Vec<String> = value_part
+                    .trim_matches('"')
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                (aliases, true)
+            } else {
+                (Vec::new(), true)
+            }
+        } else {
+            (Vec::new(), false)
+        }
+    } else {
+        (Vec::new(), false)
+    };
+
+    // Build new aliases: add old_name, remove new_name
+    let mut new_aliases: Vec<String> = existing_aliases
+        .into_iter()
+        .filter(|a| a != new_name)
+        .collect();
+
+    if !new_aliases.contains(&old_name.to_string()) {
+        new_aliases.push(old_name.to_string());
+    }
+
+    // Update frontmatter
+    if !has_frontmatter {
+        if new_aliases.is_empty() {
+            return content.to_string();
+        }
+        return format!("---\naliases: \"{}\"\n---\n\n{}", new_aliases.join(", "), content);
+    }
+
+    let parts: Vec<&str> = content.splitn(3, "---").collect();
+    let frontmatter = parts[1];
+    let body = parts[2];
+
+    if let Some(aliases_line_idx) = frontmatter.lines().position(|l| l.trim_start().starts_with("aliases:")) {
+        let lines: Vec<&str> = frontmatter.lines().collect();
+
+        let new_frontmatter: Vec<String> = lines.iter().enumerate()
+            .filter_map(|(i, &l)| {
+                if i == aliases_line_idx {
+                    if new_aliases.is_empty() {
+                        None // Remove the line if no aliases
+                    } else {
+                        Some(format!("aliases: \"{}\"", new_aliases.join(", ")))
+                    }
+                } else {
+                    Some(l.to_string())
+                }
+            })
+            .collect();
+
+        format!("---{}---{}", new_frontmatter.join("\n"), body)
+    } else if !new_aliases.is_empty() {
+        // No aliases field, add it
+        let new_frontmatter = format!("{}\naliases: \"{}\"", frontmatter.trim_end(), new_aliases.join(", "));
+        format!("---{}---{}", new_frontmatter, body)
+    } else {
+        content.to_string()
+    }
+}
+
 /// Deprecate a command by moving it to ~/.claude/.commands/archived/
 /// This moves it outside the commands directory so Claude Code won't load it
 #[tauri::command]
@@ -2594,6 +2757,7 @@ pub fn run() {
             get_command_stats,
             get_templates_catalog,
             install_command_template,
+            rename_command,
             deprecate_command,
             archive_command,
             restore_command,

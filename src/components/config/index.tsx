@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ReactNode, ComponentType } from "react";
 import Markdown from "react-markdown";
-import { ExternalLink, Download, MessageCircle, MoreHorizontal, ChevronDown, Pencil, type LucideProps } from "lucide-react";
+import { ExternalLink, Download, MessageCircle, MoreHorizontal, ChevronDown, type LucideProps } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -189,7 +189,7 @@ export function DetailHeader({
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={handleSubmit}
               onKeyDown={handleKeyDown}
-              className="font-mono text-2xl font-semibold text-primary bg-transparent border-b-2 border-primary outline-none"
+              className="font-mono text-2xl font-semibold text-primary bg-transparent border-b-2 border-primary outline-none min-w-[200px]"
             />
           ) : (
             <h1
@@ -199,15 +199,6 @@ export function DetailHeader({
             >
               {title}
             </h1>
-          )}
-          {onRename && !isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="p-1 text-muted-foreground hover:text-primary transition-colors"
-              title="Rename"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
           )}
           {badge && (
             <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
