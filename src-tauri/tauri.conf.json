@@ -13,6 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "Lovcode",
         "width": 800,
         "height": 600,
@@ -22,6 +23,21 @@
           "x": 16,
           "y": 28
         }
+      },
+      {
+        "label": "float",
+        "title": "",
+        "url": "/float.html",
+        "width": 280,
+        "height": 320,
+        "x": 100,
+        "y": 100,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visible": false
       }
     ],
     "security": {

@@ -228,6 +228,18 @@ pub struct McpServer {
     pub env: HashMap<String, String>,
 }
 
+// ============================================================================
+// Review Queue Types
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReviewItem {
+    pub id: String,
+    pub title: String,
+    pub project: Option<String>,
+    pub timestamp: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClaudeSettings {
     pub raw: Value,
@@ -1201,6 +1213,7 @@ fn rename_command(path: String, new_name: String, create_dir: Option<bool>) -> R
         return Err(format!("A command with name '{}' already exists", new_filename));
     }
 
+    println!("[rename_command] src: {:?}, dest: {:?}, equal: {}", src, dest, dest == src);
     if dest != src {
         // Calculate old command name (derive from filename without .md)
         let old_basename = src.file_stem()
@@ -1237,7 +1250,9 @@ fn rename_command(path: String, new_name: String, create_dir: Option<bool>) -> R
             fs::write(&src, &updated).map_err(|e| e.to_string())?;
         }
 
+        println!("[rename_command] executing fs::rename from {:?} to {:?}", src, dest);
         fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+        println!("[rename_command] fs::rename succeeded");
 
         // Also rename associated .changelog file if exists
         let changelog_src = src.with_extension("changelog");
@@ -1812,6 +1827,15 @@ fn get_reference_doc(path: String) -> Result<String, String> {
         return Err(format!("Document not found: {}", path));
     }
     fs::read_to_string(&doc_path).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Review Queue Commands
+// ============================================================================
+
+#[tauri::command]
+fn emit_review_queue(window: tauri::Window, items: Vec<ReviewItem>) -> Result<(), String> {
+    window.emit("review-queue-update", items).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2786,7 +2810,8 @@ pub fn run() {
             set_distill_watch_enabled,
             list_reference_sources,
             list_reference_docs,
-            get_reference_doc
+            get_reference_doc,
+            emit_review_queue
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

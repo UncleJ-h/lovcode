@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FileText } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FileText, FolderInput } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -37,6 +37,7 @@ import { Button } from "./components/ui/button";
 import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
 import { DocumentReader } from "./components/DocumentReader";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -386,11 +387,36 @@ function App() {
   const [profile, setProfile] = usePersistedState<UserProfile>("lovcode:profile", { nickname: "", avatarUrl: "" });
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [distillWatchEnabled, setDistillWatchEnabled] = useState(true);
+  const [floatWindowVisible, setFloatWindowVisible] = usePersistedState("lovcode:floatWindowVisible", false);
 
   // Load home directory and distill watch status
   useEffect(() => {
     invoke<string>("get_home_dir").then(setHomeDir).catch(() => {});
     invoke<boolean>("get_distill_watch_enabled").then(setDistillWatchEnabled).catch(() => {});
+  }, []);
+
+  // Toggle float window visibility
+  const toggleFloatWindow = useCallback(async () => {
+    const floatWin = await WebviewWindow.getByLabel("float");
+    if (floatWin) {
+      const visible = await floatWin.isVisible();
+      if (visible) {
+        await floatWin.hide();
+        setFloatWindowVisible(false);
+      } else {
+        await floatWin.show();
+        setFloatWindowVisible(true);
+      }
+    }
+  }, [setFloatWindowVisible]);
+
+  // Restore float window visibility on mount
+  useEffect(() => {
+    if (floatWindowVisible) {
+      WebviewWindow.getByLabel("float").then(win => {
+        if (win) win.show();
+      });
+    }
   }, []);
 
   // Persist view to localStorage
@@ -693,6 +719,13 @@ function App() {
                     className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
                   >
                     Settings
+                  </button>
+                  <button
+                    onClick={toggleFloatWindow}
+                    className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
+                  >
+                    <span>Review Queue</span>
+                    <span className={`w-2 h-2 rounded-full ${floatWindowVisible ? "bg-green-500" : "bg-muted-foreground/30"}`} />
                   </button>
                 </div>
               </PopoverContent>
@@ -1824,6 +1857,10 @@ function CommandsView({
   const [selectedCommand, setSelectedCommand] = useState<LocalCommand | null>(null);
   const [replacementCommand, setReplacementCommand] = useState("");
   const [deprecationNote, setDeprecationNote] = useState("");
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moveTargetFolder, setMoveTargetFolder] = useState("");
+  const [moveCreateDirOpen, setMoveCreateDirOpen] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{ cmd: LocalCommand; newPath: string; dirPath: string } | null>(null);
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
 
   // Calculate usage count including aliases
@@ -1836,8 +1873,9 @@ function CommandsView({
     return mainCount + aliasCount;
   };
 
-  const refreshCommands = () => {
-    invoke<LocalCommand[]>("list_local_commands").then(setCommands);
+  const refreshCommands = async () => {
+    const cmds = await invoke<LocalCommand[]>("list_local_commands");
+    setCommands(cmds);
   };
 
   const handleDeprecate = async () => {
@@ -1870,6 +1908,66 @@ function CommandsView({
   const openDeprecateDialog = (cmd: LocalCommand) => {
     setSelectedCommand(cmd);
     setDeprecateDialogOpen(true);
+  };
+
+  const openMoveDialog = (cmd: LocalCommand) => {
+    setSelectedCommand(cmd);
+    // Default to root folder
+    setMoveTargetFolder("");
+    setMoveDialogOpen(true);
+  };
+
+  // Extract folder list from commands
+  const getFolders = (): string[] => {
+    const folders = new Set<string>();
+    for (const cmd of commands) {
+      const match = cmd.path.match(/\.claude\/commands\/(.+)$/);
+      if (match) {
+        const parts = match[1].split("/");
+        if (parts.length > 1) {
+          let path = "";
+          for (let i = 0; i < parts.length - 1; i++) {
+            path = path ? `${path}/${parts[i]}` : parts[i];
+            folders.add(path);
+          }
+        }
+      }
+    }
+    return Array.from(folders).sort();
+  };
+
+  const handleMove = async (cmd: LocalCommand, targetFolder: string, createDir = false) => {
+    try {
+      // Get the filename without path
+      const filename = cmd.path.split("/").pop()?.replace(".md", "") || "";
+      const newName = targetFolder ? `/${targetFolder}/${filename}` : `/${filename}`;
+      await invoke<string>("rename_command", { path: cmd.path, newName, createDir });
+      setMoveDialogOpen(false);
+      setSelectedCommand(null);
+      await refreshCommands();
+    } catch (e) {
+      const error = String(e);
+      if (error.startsWith("DIR_NOT_EXIST:")) {
+        const dirPath = error.slice("DIR_NOT_EXIST:".length);
+        const filename = cmd.path.split("/").pop()?.replace(".md", "") || "";
+        const newPath = targetFolder ? `/${targetFolder}/${filename}` : `/${filename}`;
+        setPendingMove({ cmd, newPath, dirPath });
+        setMoveCreateDirOpen(true);
+      } else {
+        console.error("Failed to move command:", e);
+      }
+    }
+  };
+
+  const handleConfirmMoveCreateDir = async () => {
+    if (pendingMove) {
+      setMoveCreateDirOpen(false);
+      await invoke<string>("rename_command", { path: pendingMove.cmd.path, newName: pendingMove.newPath, createDir: true });
+      setPendingMove(null);
+      setMoveDialogOpen(false);
+      setSelectedCommand(null);
+      await refreshCommands();
+    }
   };
 
   useEffect(() => {
@@ -2077,7 +2175,7 @@ function CommandsView({
                   <MoreHorizontal className="w-4 h-4" />
                 </span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                 <DropdownMenuItem onClick={() => onSelect(cmd!)}>
                   <HelpCircle className="w-4 h-4 mr-2" />
                   View Details
@@ -2098,6 +2196,12 @@ function CommandsView({
                   <Copy className="w-4 h-4 mr-2" />
                   Copy Path
                 </DropdownMenuItem>
+                {!isInactive && (
+                  <DropdownMenuItem onSelect={() => openMoveDialog(cmd!)}>
+                    <FolderInput className="w-4 h-4 mr-2" />
+                    Move to...
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 {isInactive ? (
                   <DropdownMenuItem onClick={() => handleRestore(cmd!)}>
@@ -2241,6 +2345,118 @@ function CommandsView({
             </Button>
             <Button onClick={handleDeprecate} className="bg-amber-600 hover:bg-amber-700">
               Deprecate
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move dialog */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move {selectedCommand?.name}</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const getCurrentFolder = () => {
+              if (!selectedCommand) return "";
+              const match = selectedCommand.path.match(/\.claude\/commands\/(.+)$/);
+              if (match) {
+                const parts = match[1].split("/");
+                if (parts.length > 1) return parts.slice(0, -1).join("/");
+              }
+              return "";
+            };
+            const currentFolder = getCurrentFolder();
+            return (
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  Current: <code className="bg-muted px-1 rounded font-mono">/{currentFolder || "(root)"}</code>
+                </p>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <button
+                    onClick={() => setMoveTargetFolder("")}
+                    disabled={currentFolder === ""}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left transition-colors ${
+                      currentFolder === "" ? "opacity-50 cursor-not-allowed" :
+                      moveTargetFolder === "" ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                    }`}
+                  >
+                    <Folder className="w-4 h-4" />
+                    <span className="font-mono">/ (root)</span>
+                    {currentFolder === "" && <span className="text-xs text-muted-foreground ml-auto">(current)</span>}
+                  </button>
+                  {getFolders().map((folder) => {
+                    const isCurrent = folder === currentFolder;
+                    return (
+                      <button
+                        key={folder}
+                        onClick={() => setMoveTargetFolder(folder)}
+                        disabled={isCurrent}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left transition-colors ${
+                          isCurrent ? "opacity-50 cursor-not-allowed" :
+                          moveTargetFolder === folder ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                        }`}
+                      >
+                        <Folder className="w-4 h-4" />
+                        <span className="font-mono">/{folder}</span>
+                        {isCurrent && <span className="text-xs text-muted-foreground ml-auto">(current)</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div>
+                  <Label htmlFor="move-new-folder">Or enter a new folder path:</Label>
+                  <Input
+                    id="move-new-folder"
+                    placeholder="/new/folder/path"
+                    value={moveTargetFolder}
+                    onChange={(e) => setMoveTargetFolder(e.target.value.replace(/^\//, ""))}
+                    className="mt-1 font-mono"
+                  />
+                </div>
+              </div>
+            );
+          })()}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setMoveDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => selectedCommand && handleMove(selectedCommand, moveTargetFolder)}
+              disabled={(() => {
+                if (!selectedCommand) return true;
+                const match = selectedCommand.path.match(/\.claude\/commands\/(.+)$/);
+                const cur = match ? (match[1].split("/").length > 1 ? match[1].split("/").slice(0, -1).join("/") : "") : "";
+                return moveTargetFolder === cur;
+              })()}
+            >
+              Move
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move create directory dialog */}
+      <Dialog open={moveCreateDirOpen} onOpenChange={(open) => {
+        setMoveCreateDirOpen(open);
+        if (!open) setPendingMove(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Directory?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-4">
+            The directory <code className="bg-card-alt px-1 rounded">{pendingMove?.dirPath}</code> does not exist. Create it?
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => {
+              setMoveCreateDirOpen(false);
+              setPendingMove(null);
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmMoveCreateDir}>
+              Create
             </Button>
           </div>
         </DialogContent>
