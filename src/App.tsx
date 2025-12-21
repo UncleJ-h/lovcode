@@ -58,15 +58,22 @@ import {
 // Hooks
 // ============================================================================
 
-function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T) => void] {
+function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
-    const stored = localStorage.getItem(key);
-    return stored !== null ? JSON.parse(stored) : defaultValue;
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? JSON.parse(stored) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
   });
 
-  const setPersistedState = useCallback((value: T) => {
-    setState(value);
-    localStorage.setItem(key, JSON.stringify(value));
+  const setPersistedState = useCallback((value: T | ((prev: T) => T)) => {
+    setState(prev => {
+      const next = typeof value === "function" ? (value as (prev: T) => T)(prev) : value;
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
   }, [key]);
 
   return [state, setPersistedState];
@@ -1547,7 +1554,14 @@ function ReferenceDocTree({
   sourceName: string;
   onDocClick: (source: string, doc: ReferenceDoc, index: number) => void;
 }) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [allCollapsed, setAllCollapsed] = usePersistedState<Record<string, string[]>>("lovcode:reference:collapsedGroups", {});
+  const collapsedGroups = useMemo(() => new Set(allCollapsed[sourceName] ?? []), [allCollapsed, sourceName]);
+  const setCollapsedGroups = useCallback((updater: (prev: Set<string>) => Set<string>) => {
+    setAllCollapsed(prev => ({
+      ...prev,
+      [sourceName]: Array.from(updater(new Set(prev[sourceName] ?? [])))
+    }));
+  }, [sourceName, setAllCollapsed]);
 
   // Group docs by their group field
   const grouped = useMemo(() => {
@@ -1632,7 +1646,15 @@ function ReferenceView({
 }) {
   const [sources, setSources] = useState<ReferenceSource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedSource, setExpandedSource] = useState<string | null>(initialSource ?? null);
+  const [persistedSource, setPersistedSource] = usePersistedState<string | null>("lovcode:reference:expandedSource", null);
+  const [expandedSource, setExpandedSource] = useState<string | null>(initialSource ?? persistedSource);
+
+  // Sync to persisted state when expandedSource changes
+  useEffect(() => {
+    if (expandedSource !== persistedSource) {
+      setPersistedSource(expandedSource);
+    }
+  }, [expandedSource]);
   const [docs, setDocs] = useState<ReferenceDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docContent, setDocContent] = useState<string>("");
@@ -1791,7 +1813,8 @@ function CommandsView({
   const [sortDir, setSortDir] = usePersistedState<SortDirection>("lovcode:commands:sortDir", "desc");
   const [showDeprecated, setShowDeprecated] = usePersistedState("lovcode:commands:showDeprecated", false);
   const [viewMode, setViewMode] = usePersistedState<"flat" | "tree">("lovcode:commands:viewMode", "tree");
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [expandedFoldersArr, setExpandedFoldersArr] = usePersistedState<string[]>("lovcode:commands:expandedFolders", []);
+  const expandedFolders = useMemo(() => new Set(expandedFoldersArr), [expandedFoldersArr]);
   const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<LocalCommand | null>(null);
   const [replacementCommand, setReplacementCommand] = useState("");
@@ -1956,12 +1979,9 @@ function CommandsView({
   const tree = viewMode === "tree" ? buildTree(statusFiltered) : [];
 
   const toggleFolder = (path: string) => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    setExpandedFoldersArr(prev =>
+      prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
+    );
   };
 
   const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
@@ -2005,15 +2025,6 @@ function CommandsView({
               v{cmd.version.replace(/^["']|["']$/g, '')}
             </span>
           )}
-          {/* Aliases indicator */}
-          {!isFolder && cmd?.aliases && cmd.aliases.length > 0 && (
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 font-medium"
-              title={`Aliases: ${cmd.aliases.join(", ")}`}
-            >
-              +{cmd.aliases.length}
-            </span>
-          )}
           {/* 使用次数 */}
           {!isFolder && usageCount > 0 && (
             <span
@@ -2025,6 +2036,20 @@ function CommandsView({
               title={`Used ${usageCount} times`}
             >
               ×{usageCount}
+            </span>
+          )}
+          {/* Aliases indicator with hover dropdown */}
+          {!isFolder && cmd?.aliases && cmd.aliases.length > 0 && (
+            <span className="relative group/aliases">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 font-medium">
+                +{cmd.aliases.length}
+              </span>
+              <div className="absolute left-0 top-full mt-1 hidden group-hover/aliases:block z-50 bg-popover border border-border rounded-md shadow-md p-2 min-w-max">
+                <div className="text-xs text-muted-foreground mb-1">Aliases:</div>
+                {cmd.aliases.map((alias, i) => (
+                  <div key={i} className="font-mono text-xs text-primary">{alias}</div>
+                ))}
+              </div>
             </span>
           )}
           <span className="flex-1" />
@@ -2348,6 +2373,7 @@ function CommandDetailView({
   const [deprecationNote, setDeprecationNote] = useState("");
   const changelogRef = useRef<HTMLDivElement>(null);
   const [editingAliases, setEditingAliases] = useState(false);
+  const [localAliases, setLocalAliases] = useState(command.aliases);
   const [aliasesInput, setAliasesInput] = useState(command.aliases.join(", "));
 
   const isDeprecated = command.status === "deprecated";
@@ -2400,10 +2426,25 @@ function CommandDetailView({
       .filter(a => a.length > 0);
     try {
       await invoke("update_command_aliases", { path: command.path, aliases });
+      setLocalAliases(aliases);
       setEditingAliases(false);
       onCommandUpdated?.();
     } catch (e) {
       console.error("Failed to update aliases:", e);
+    }
+  };
+
+  const handleAliasKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveAliases();
+    } else if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      // Add comma and space if not already ending with comma
+      const trimmed = aliasesInput.trimEnd();
+      if (trimmed && !trimmed.endsWith(",")) {
+        setAliasesInput(trimmed + ", ");
+      }
     }
   };
 
@@ -2464,7 +2505,7 @@ function CommandDetailView({
         <DetailCard label="Aliases" action={
           editingAliases ? (
             <div className="flex gap-2">
-              <button onClick={() => { setEditingAliases(false); setAliasesInput(command.aliases.join(", ")); }} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={() => { setEditingAliases(false); setAliasesInput(localAliases.join(", ")); }} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
               <button onClick={handleSaveAliases} className="text-xs text-primary hover:text-primary/80">Save</button>
             </div>
           ) : (
@@ -2475,12 +2516,14 @@ function CommandDetailView({
             <Input
               value={aliasesInput}
               onChange={(e) => setAliasesInput(e.target.value)}
-              placeholder="/old-name, /another-old-name"
+              onKeyDown={handleAliasKeyDown}
+              placeholder="/old-name, /another-old-name (Enter to save, Tab to add more)"
               className="font-mono text-sm"
+              autoFocus
             />
-          ) : command.aliases.length > 0 ? (
+          ) : localAliases.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {command.aliases.map((alias, i) => (
+              {localAliases.map((alias, i) => (
                 <span key={i} className="font-mono text-sm px-2 py-0.5 rounded bg-primary/10 text-primary">{alias}</span>
               ))}
             </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, SetStateAction } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -241,6 +241,31 @@ function ReadingProgressBar({ progress }: { progress: number }) {
 }
 
 // ============================================================================
+// Persisted State Hook
+// ============================================================================
+
+function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? JSON.parse(stored) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+
+  const setPersistedState = useCallback((value: T | ((prev: T) => T)) => {
+    setState(prev => {
+      const next = typeof value === "function" ? (value as (prev: T) => T)(prev) : value;
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+
+  return [state, setPersistedState];
+}
+
+// ============================================================================
 // Left Sidebar - Document List
 // ============================================================================
 
@@ -261,7 +286,14 @@ function DocumentListSidebar({
   isOpen: boolean;
   onToggle: () => void;
 }) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [allCollapsed, setAllCollapsed] = usePersistedState<Record<string, string[]>>("lovcode:docReader:collapsedGroups", {});
+  const collapsedGroups = useMemo(() => new Set(allCollapsed[sourceName] ?? []), [allCollapsed, sourceName]);
+  const setCollapsedGroups = useCallback((updater: (prev: Set<string>) => Set<string>) => {
+    setAllCollapsed(prev => ({
+      ...prev,
+      [sourceName]: Array.from(updater(new Set(prev[sourceName] ?? [])))
+    }));
+  }, [sourceName, setAllCollapsed]);
   const activeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
