@@ -28,8 +28,8 @@
         "label": "float",
         "title": "",
         "url": "/float.html",
-        "width": 280,
-        "height": 320,
+        "width": 121,
+        "height": 48,
         "x": 100,
         "y": 100,
         "decorations": false,
@@ -37,7 +37,8 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
-        "visible": false
+        "visible": false,
+        "acceptFirstMouse": true
       }
     ],
     "security": {

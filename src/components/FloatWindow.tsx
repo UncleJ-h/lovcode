@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ClipboardList, X, GripVertical } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
@@ -29,26 +29,6 @@ export function FloatWindow() {
   const [snapSide, setSnapSide] = useState<"left" | "right" | null>(null);
   const isDraggingRef = useRef(false);
 
-  // 点击穿透控制
-  const setIgnoreCursor = useCallback(async (ignore: boolean) => {
-    const win = getCurrentWindow();
-    await win.setIgnoreCursorEvents(ignore);
-  }, []);
-
-  // 默认启用穿透
-  useEffect(() => {
-    setIgnoreCursor(true);
-  }, [setIgnoreCursor]);
-
-  // 鼠标进入 UI 区域时取消穿透
-  const handleMouseEnter = useCallback(() => {
-    setIgnoreCursor(false);
-  }, [setIgnoreCursor]);
-
-  // 鼠标离开时恢复穿透
-  const handleMouseLeave = useCallback(() => {
-    setIgnoreCursor(true);
-  }, [setIgnoreCursor]);
 
   // 磁吸到边缘
   const snapToEdge = async () => {
@@ -115,6 +95,25 @@ export function FloatWindow() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
+  // 计算收起状态的宽度
+  const getCollapsedWidth = () => {
+    const paddingX = 12;
+    const badgeSize = 24;
+    const gap = 8;
+    const brandName = "Lovnotifier";
+    const charWidth = 7;
+    return Math.ceil(paddingX * 2 + badgeSize + gap + brandName.length * charWidth);
+  };
+
+  // 初始化窗口大小（收起状态）
+  useEffect(() => {
+    const initSize = async () => {
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(getCollapsedWidth(), 48));
+    };
+    initSize();
+  }, []);
+
   // Demo数据
   useEffect(() => {
     setItems([
@@ -159,13 +158,7 @@ export function FloatWindow() {
         const expandedWidth = 280;
         const expandedHeight = 320;
         const collapsedHeight = 48;
-        // 固定 padding + 徽章宽度，品牌名自适应
-        const paddingX = 12; // px-3
-        const badgeSize = 24; // w-6
-        const gap = 8; // gap-2
-        const brandName = "Lovnotifier";
-        const charWidth = 7; // text-xs 平均字符宽度
-        const collapsedWidth = Math.ceil(paddingX * 2 + badgeSize + gap + brandName.length * charWidth);
+        const collapsedWidth = getCollapsedWidth();
 
         // 先更新状态，让样式先变化
         setIsExpanded(prev => !prev);
@@ -228,8 +221,10 @@ export function FloatWindow() {
     : "rounded-full";  // 未吸附，全圆
 
   return (
-    <div className="w-full h-full">
-      <div className={`w-full h-full bg-primary text-primary-foreground shadow-2xl overflow-hidden transition-all ${isExpanded ? "rounded-xl" : collapsedRounding}`}>
+    <div className="w-fit h-fit">
+      <div
+        className={`bg-primary text-primary-foreground shadow-2xl overflow-hidden transition-all ${isExpanded ? "rounded-xl" : collapsedRounding}`}
+      >
         {/* Header - click to toggle, drag to move */}
         <div
           className={`flex items-center gap-2 cursor-pointer select-none h-full ${isExpanded ? "justify-center p-3" : "px-3 py-2"}`}
