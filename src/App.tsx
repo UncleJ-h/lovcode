@@ -1779,10 +1779,10 @@ function CommandsView({
   const [commands, setCommands] = useState<LocalCommand[]>([]);
   const [commandStats, setCommandStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<CommandSortKey>("usage");
-  const [sortDir, setSortDir] = useState<SortDirection>("desc");
-  const [showDeprecated, setShowDeprecated] = useState(false);
-  const [viewMode, setViewMode] = useState<"flat" | "tree">("flat");
+  const [sortKey, setSortKey] = usePersistedState<CommandSortKey>("lovcode:commands:sortKey", "usage");
+  const [sortDir, setSortDir] = usePersistedState<SortDirection>("lovcode:commands:sortDir", "desc");
+  const [showDeprecated, setShowDeprecated] = usePersistedState("lovcode:commands:showDeprecated", false);
+  const [viewMode, setViewMode] = usePersistedState<"flat" | "tree">("lovcode:commands:viewMode", "tree");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<LocalCommand | null>(null);
@@ -2016,11 +2016,11 @@ function CommandsView({
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuLabel className="text-xs">View</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={viewMode} onValueChange={(v) => setViewMode(v as "flat" | "tree")}>
-              <DropdownMenuRadioItem value="flat">
-                <List className="w-4 h-4 mr-2" /> Flat
-              </DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="tree">
                 <FolderTree className="w-4 h-4 mr-2" /> Tree
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="flat">
+                <List className="w-4 h-4 mr-2" /> Flat
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
@@ -3157,7 +3157,7 @@ function ProjectList({
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [totalChats, setTotalChats] = useState(0);
   const CHATS_PAGE_SIZE = 50;
-  const [sortBy, setSortBy] = useState<SortKey>("recent");
+  const [sortBy, setSortBy] = usePersistedState<SortKey>("lovcode:allProjects:sortBy", "recent");
   const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions-all", false);
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -3482,7 +3482,7 @@ function SessionList({
   const [globalContext, setGlobalContext] = useState<ContextFile[]>([]);
   const [projectContext, setProjectContext] = useState<ContextFile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [contextTab, setContextTab] = useState<"global" | "project">("project");
+  const [contextTab, setContextTab] = usePersistedState<"global" | "project">("lovcode:sessions:contextTab", "project");
   const [selectMode, setSelectMode] = usePersistedState("lovcode:sessionSelectMode", false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);

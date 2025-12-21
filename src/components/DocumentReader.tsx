@@ -510,6 +510,58 @@ function CodeBlock({
 }
 
 // ============================================================================
+// Book Cover Component
+// ============================================================================
+
+function BookCover({
+  title,
+  subtitle,
+  documentCount,
+}: {
+  title: string;
+  subtitle?: string;
+  documentCount: number;
+}) {
+  return (
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-center py-16 mb-12">
+      {/* Decorative top line */}
+      <div className="w-24 h-0.5 bg-primary/40 mb-12" />
+
+      {/* Main title */}
+      <h1 className="font-serif text-4xl md:text-5xl font-bold text-ink leading-tight max-w-2xl">
+        {title}
+      </h1>
+
+      {/* Subtitle */}
+      {subtitle && (
+        <p className="mt-4 text-lg text-muted-foreground max-w-xl">
+          {subtitle}
+        </p>
+      )}
+
+      {/* Document count badge */}
+      <div className="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="w-8 h-px bg-border" />
+        <span>{documentCount} documents</span>
+        <span className="w-8 h-px bg-border" />
+      </div>
+
+      {/* Decorative bottom element */}
+      <div className="mt-12 w-16 h-16 rounded-full border-2 border-primary/20 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border border-primary/40 flex items-center justify-center">
+          <ChevronDown className="w-4 h-4 text-primary/60 animate-bounce" />
+        </div>
+      </div>
+
+      {/* Hint text */}
+      <p className="mt-6 text-xs text-muted-foreground/60">
+        Scroll down to start reading
+      </p>
+    </div>
+  );
+}
+
+// ============================================================================
 // Document Content Component
 // ============================================================================
 
@@ -881,6 +933,14 @@ export function DocumentReader({
           data-ref-scroll
           className="flex-1 min-w-0 overflow-y-auto px-8 py-8 md:px-16"
         >
+          {/* Book cover - only show on first document */}
+          {currentIndex === 0 && !loading && (
+            <BookCover
+              title={startCase(sourceName)}
+              documentCount={documents.length}
+            />
+          )}
+
           <DocumentContent
             content={content}
             loading={loading}
