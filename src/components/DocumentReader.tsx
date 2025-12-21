@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, SetStateAction } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";

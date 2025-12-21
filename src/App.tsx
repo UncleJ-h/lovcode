@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, ChevronRight as ChevronRightIcon, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FileText } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FileText } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -1923,7 +1923,7 @@ function CommandsView({
   const deprecatedCount = commands.filter((c) => c.status !== "active").length;
 
   // Build tree structure for tree view (supports unlimited nesting)
-  type FolderNode = { type: "folder"; name: string; path: string; childMap: Map<string, TreeNode> };
+  type FolderNode = { type: "folder"; name: string; path: string; childMap: Map<string, FolderNode | { type: "command"; command: LocalCommand }> };
   type TreeNode = { type: "folder"; name: string; path: string; children: TreeNode[] } | { type: "command"; command: LocalCommand };
 
   const buildTree = (cmds: LocalCommand[]): TreeNode[] => {
