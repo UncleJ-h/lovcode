@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0
+
+### Minor Changes
+
+- feat(queue): 消息队列支持已完成/待处理切换和虚拟滚动
+
+  - 新增已完成消息队列存储和持久化
+  - 新增 dismiss_review_item 和 get_completed_queue 命令
+  - 使用 @tanstack/react-virtual 实现虚拟滚动
+  - Header 添加 MiniSwitch 切换仅显示待处理或全部消息
+  - 使用 Lovcode logo 替换 ClipboardList 图标
+
 ## 0.10.0
 
 ### Minor Changes
