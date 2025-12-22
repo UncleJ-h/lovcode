@@ -3461,6 +3461,12 @@ function SettingsView({
     : envEntries.filter(([key]) => key.toLowerCase().includes(search.toLowerCase()));
   const proxyPresets = [
     {
+      key: "corporate",
+      label: "Corporate HTTP(S) proxy",
+      description: "Add HTTP_PROXY / HTTPS_PROXY for firewalled networks",
+      templateName: "corporate-proxy",
+    },
+    {
       key: "native",
       label: "Native Anthropic",
       description: "Direct Anthropic endpoint with official models",
@@ -3471,12 +3477,6 @@ function SettingsView({
       label: "ZenMux (Anthropic protocol)",
       description: "Route via ZenMux to unlock more model options",
       templateName: "zenmux-anthropic-proxy",
-    },
-    {
-      key: "corporate",
-      label: "Corporate HTTP(S) proxy",
-      description: "Add HTTP_PROXY / HTTPS_PROXY for firewalled networks",
-      templateName: "corporate-proxy",
     },
   ];
   const filteredPresets = proxyPresets.filter((preset) =>
@@ -3565,7 +3565,7 @@ function SettingsView({
       }
 
       setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
-      setTestMessage((prev) => ({ ...prev, [presetKey]: "Ready" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: "" }));
     } catch (e) {
       setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
       setTestMessage((prev) => ({ ...prev, [presetKey]: `Invalid template JSON: ${String(e)}` }));
@@ -3816,14 +3816,8 @@ function SettingsView({
               return (
                 <div
                   key={preset.key}
-                  className={`rounded-lg border border-border bg-card-alt p-3 flex flex-col gap-2 w-full overflow-hidden relative ${isTestSuccess ? "border-green-500/60 bg-green-50/30" : ""}`}
+                  className={`rounded-lg border p-3 flex flex-col gap-2 w-full overflow-hidden ${isTestSuccess ? "border-primary/60 bg-primary/5" : isTestError ? "border-destructive/60 bg-destructive/5" : "border-border bg-card-alt"}`}
                 >
-                  {isTestSuccess && (
-                    <span
-                      aria-label="Test passed"
-                      className="absolute left-2 top-2 h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
-                    />
-                  )}
                   <div className="flex w-full flex-nowrap items-start gap-3 overflow-hidden">
                     <div className="min-w-0 flex-1 overflow-hidden">
                       <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
@@ -3847,12 +3841,12 @@ function SettingsView({
                           <Button
                             size="icon"
                             variant="outline"
-                            className={`h-9 w-9 ${isTestSuccess ? "border-green-500 text-green-600 hover:bg-green-50" : isTestError ? "border-red-500 text-red-600 hover:bg-red-50" : ""}`}
+                            className={`h-9 w-9 ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`}
                             onClick={() => handleTestPreset(preset.key)}
-                            title={isTestSuccess ? "Tested" : "Test"}
-                            aria-label={isTestSuccess ? "Tested" : "Test"}
+                            title="Test"
+                            aria-label="Test"
                           >
-                            {isTestSuccess ? <CheckIcon /> : <FlaskConical className="h-4 w-4" />}
+                            <FlaskConical className="h-4 w-4" />
                           </Button>
                           <Button
                             size="icon"
@@ -3874,10 +3868,10 @@ function SettingsView({
                           <Button
                             size="sm"
                             variant="outline"
-                            className={`max-w-[6rem] ${isTestSuccess ? "border-green-500 text-green-600 hover:bg-green-50" : isTestError ? "border-red-500 text-red-600 hover:bg-red-50" : ""}`}
+                            className={`max-w-[6rem] ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`}
                             onClick={() => handleTestPreset(preset.key)}
                           >
-                            <span className="block truncate">{isTestSuccess ? "Tested" : "Test"}</span>
+                            <span className="block truncate">Test</span>
                           </Button>
                           <Button
                             size="sm"
@@ -3897,7 +3891,7 @@ function SettingsView({
                     {isSuccess && <span className="text-xs text-green-600">Saved</span>}
                     {status === "error" && <span className="text-xs text-red-600">Failed</span>}
                     {testStatus[preset.key] === "loading" && <span className="text-xs text-muted-foreground">Testing...</span>}
-                    {testStatus[preset.key] === "success" && <span className="text-xs text-green-600">{testMessage[preset.key] || "Ready"}</span>}
+                    {testStatus[preset.key] === "success" && testMessage[preset.key] && <span className="text-xs text-green-600">{testMessage[preset.key]}</span>}
                     {testStatus[preset.key] === "error" && <span className="text-xs text-red-600">{testMessage[preset.key] || "Failed"}</span>}
                   </div>
                   {missingKeys.length > 0 && (
