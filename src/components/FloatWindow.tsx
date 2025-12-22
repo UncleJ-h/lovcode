@@ -174,7 +174,7 @@ export function FloatWindow() {
     const paddingX = 12;
     const badgeSize = 24;
     const gap = 8;
-    const brandName = "Lovnotifier";
+    const brandName = "Lovcode";
     const charWidth = 7;
     return Math.ceil(paddingX * 2 + badgeSize + gap + brandName.length * charWidth);
   };
@@ -278,8 +278,8 @@ export function FloatWindow() {
 
         if (!isExpanded) {
           // 展开：先调整窗口大小，再改状态（避免圆角突变）
-          const screenLeft = window.screen.availLeft ?? 0;
-          const screenTop = window.screen.availTop ?? 0;
+          const screenLeft = (window.screen as { availLeft?: number }).availLeft ?? 0;
+          const screenTop = (window.screen as { availTop?: number }).availTop ?? 0;
           const screenWidth = window.screen.availWidth;
           const screenHeight = window.screen.availHeight;
 
@@ -374,7 +374,7 @@ export function FloatWindow() {
               className="flex items-center gap-2 flex-1"
             >
               <ClipboardList className="w-5 h-5 shrink-0" />
-              <span className="font-medium text-sm flex-1">Lovnotifier Messages</span>
+              <span className="font-medium text-sm flex-1">Lovcode Messages</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -387,7 +387,7 @@ export function FloatWindow() {
             </motion.div>
           ) : (
             <div className={`flex items-center w-full ${snapSide === "right" ? "flex-row-reverse" : ""}`}>
-              <span className="text-xs tracking-wide opacity-90 flex-1 px-1">Lovnotifier</span>
+              <span className="text-xs tracking-wide opacity-90 flex-1 px-1">Lovcode</span>
               <span className="w-6 h-6 flex items-center justify-center text-xs font-bold bg-white/20 rounded-full shrink-0">
                 {items.length}
               </span>

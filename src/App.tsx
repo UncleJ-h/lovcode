@@ -5,7 +5,7 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
 import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FolderInput, FlaskConical } from "lucide-react";
-import { EyeOpenIcon, EyeClosedIcon, Pencil1Icon, TrashIcon, CheckIcon, Cross1Icon, MagnifyingGlassIcon, RocketIcon } from "@radix-ui/react-icons";
+import { EyeOpenIcon, EyeClosedIcon, Pencil1Icon, TrashIcon, CheckIcon, Cross1Icon, RocketIcon } from "@radix-ui/react-icons";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -414,8 +414,8 @@ function App() {
         // 重置到屏幕右下角
         const screenWidth = window.screen.availWidth;
         const screenHeight = window.screen.availHeight;
-        const screenLeft = window.screen.availLeft ?? 0;
-        const screenTop = window.screen.availTop ?? 0;
+        const screenLeft = (window.screen as { availLeft?: number }).availLeft ?? 0;
+        const screenTop = (window.screen as { availTop?: number }).availTop ?? 0;
         const size = await floatWin.outerSize();
         const scale = window.devicePixelRatio;
         const winWidth = size.width / scale;
