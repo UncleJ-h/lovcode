@@ -3074,7 +3074,17 @@ pub fn run() {
                 .item(&PredefinedMenuItem::select_all(app, None)?)
                 .build()?;
 
+            let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window")
+                .accelerator("CmdOrCtrl+1")
+                .build(app)?;
+            let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window")
+                .accelerator("CmdOrCtrl+2")
+                .build(app)?;
+
             let window_menu = SubmenuBuilder::new(app, "Window")
+                .item(&show_main)
+                .item(&show_float)
+                .separator()
                 .item(&PredefinedMenuItem::minimize(app, None)?)
                 .item(&PredefinedMenuItem::maximize(app, None)?)
                 .item(&PredefinedMenuItem::close_window(app, None)?)
@@ -3091,10 +3101,70 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
-            if event.id().as_ref() == "settings" {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("menu-settings", ());
+            use tauri::WebviewWindowBuilder;
+            use tauri::WebviewUrl;
+
+            match event.id().as_ref() {
+                "settings" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("menu-settings", ());
+                    }
                 }
+                "show_main" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        // Recreate main window
+                        let _ = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                            .title("Lovcode")
+                            .inner_size(800.0, 600.0)
+                            .title_bar_style(tauri::TitleBarStyle::Overlay)
+                            .hidden_title(true)
+                            .build();
+                    }
+                }
+                "show_float" => {
+                    if let Some(window) = app.get_webview_window("float") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        // Recreate float window
+                        if let Ok(window) = WebviewWindowBuilder::new(app, "float", WebviewUrl::App("/float.html".into()))
+                            .title("")
+                            .inner_size(121.0, 48.0)
+                            .position(100.0, 100.0)
+                            .decorations(false)
+                            .transparent(true)
+                            .always_on_top(true)
+                            .skip_taskbar(true)
+                            .resizable(false)
+                            .visible(true)
+                            .accept_first_mouse(true)
+                            .focused(false)
+                            .build()
+                        {
+                            // Apply macOS specific settings
+                            #[cfg(target_os = "macos")]
+                            {
+                                if let Ok(ns_window) = window.ns_window() {
+                                    unsafe {
+                                        let ns_win: id = ns_window as id;
+                                        ns_win.setAcceptsMouseMovedEvents_(YES);
+                                        let behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
+                                            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
+                                            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
+                                        ns_win.setCollectionBehavior_(behavior);
+                                        ns_win.setLevel_(3);
+                                        ns_win.setIgnoresMouseEvents_(cocoa::base::NO);
+                                    }
+                                }
+                            }
+                            let _ = window;
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
