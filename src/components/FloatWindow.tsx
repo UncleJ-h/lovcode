@@ -1,34 +1,57 @@
-import { useState, useEffect, useRef } from "react";
-import { ClipboardList, X, Sparkles } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { X, Check, Trash2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 // ============================================================================
-// GlowButton - Hover 发光按钮组件
+// LovcodeLogo - App Logo 组件
 // ============================================================================
 
-function GlowButton({ children, onClick, className = "" }: {
-  children: React.ReactNode;
-  onClick?: (e: React.MouseEvent) => void;
-  className?: string;
+function LovcodeLogo({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="-127 -80 1240 1240" className={className} fill="currentColor">
+      <path d="M281.73,892.18V281.73C281.73,126.13,155.6,0,0,0l0,0v610.44C0,766.04,126.13,892.18,281.73,892.18z"/>
+      <path d="M633.91,1080V469.56c0-155.6-126.13-281.73-281.73-281.73l0,0v610.44C352.14,953.87,478.31,1080,633.91,1080L633.91,1080z"/>
+      <path d="M704.32,91.16L704.32,91.16v563.47l0,0c155.6,0,281.73-126.13,281.73-281.73S859.92,91.16,704.32,91.16z"/>
+    </svg>
+  );
+}
+
+// ============================================================================
+// MiniSwitch - 小型开关组件
+// ============================================================================
+
+function MiniSwitch({ checked, onChange, label }: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
 }) {
   return (
-    <motion.button
-      onClick={onClick}
-      whileTap={{ scale: 0.95 }}
-      className={`
-        relative p-2 rounded-lg bg-white/10
-        transition-all duration-300
-        hover:scale-105
-        hover:bg-white/20
-        hover:shadow-[0_0_20px_rgba(255,255,255,0.4),0_0_40px_rgba(204,120,92,0.3)]
-        ${className}
-      `}
+    <button
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(!checked);
+      }}
+      className="flex items-center gap-1.5 text-xs"
+      title={label}
     >
-      {children}
-    </motion.button>
+      <div
+        className={`relative w-7 h-4 rounded-full transition-colors ${
+          checked ? "bg-white/40" : "bg-white/15"
+        }`}
+      >
+        <div
+          className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+            checked ? "translate-x-3.5" : "translate-x-0.5"
+          }`}
+        />
+      </div>
+      {label && <span className="opacity-70">{label}</span>}
+    </button>
   );
 }
 
@@ -89,6 +112,10 @@ function saveState(state: Partial<FloatWindowState>) {
 
 export function FloatWindow() {
   const [items, setItems] = useState<ReviewItem[]>([]);
+  const [completedItems, setCompletedItems] = useState<ReviewItem[]>([]);
+  const [completedHasMore, setCompletedHasMore] = useState(true);
+  const [completedOffset, setCompletedOffset] = useState(0);
+  const [showOnlyPending, setShowOnlyPending] = useState(true);
   const savedState = loadState();
   const [isExpanded, setIsExpanded] = useState(savedState.isExpanded ?? false);
   const [expandDirection, setExpandDirection] = useState<"left" | "right">(savedState.expandDirection ?? "right");
@@ -96,6 +123,8 @@ export function FloatWindow() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   const initializedRef = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const PAGE_SIZE = 20;
 
   // 修复无焦点时 hover 效果不工作的问题
   // macOS WebKit 在非焦点窗口中不触发 mousemove 事件
@@ -370,15 +399,57 @@ export function FloatWindow() {
     };
   }, []);
 
+  // 加载已完成消息
+  const loadCompletedItems = useCallback(async (reset = false) => {
+    const offset = reset ? 0 : completedOffset;
+    try {
+      const items = await invoke<ReviewItem[]>("get_completed_queue", {
+        limit: PAGE_SIZE,
+        offset,
+      });
+      if (reset) {
+        setCompletedItems(items);
+        setCompletedOffset(PAGE_SIZE);
+      } else {
+        setCompletedItems(prev => [...prev, ...items]);
+        setCompletedOffset(offset + PAGE_SIZE);
+      }
+      setCompletedHasMore(items.length === PAGE_SIZE);
+    } catch (e) {
+      console.error("Failed to load completed queue:", e);
+    }
+  }, [completedOffset]);
+
   // 组件挂载时拉取当前队列，并监听后续更新
   useEffect(() => {
     invoke<ReviewItem[]>("get_review_queue").then(setItems).catch(console.error);
+    loadCompletedItems(true);
 
     const unlisten = listen<ReviewItem[]>("review-queue-update", (event) => {
       setItems(event.payload);
     });
     return () => { unlisten.then(fn => fn()); };
   }, []);
+
+  // 当关闭 showOnlyPending 时加载已完成消息
+  useEffect(() => {
+    if (!showOnlyPending) {
+      loadCompletedItems(true);
+    }
+  }, [showOnlyPending]);
+
+  // 当前显示的列表：pending only 或全部（pending + completed 按时间排序）
+  const displayItems = showOnlyPending
+    ? items
+    : [...items, ...completedItems].sort((a, b) => b.timestamp - a.timestamp);
+
+  // 虚拟滚动配置
+  const virtualizer = useVirtualizer({
+    count: displayItems.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 56, // 预估每个 item 高度
+    overscan: 5,
+  });
 
   // 计算收起状态的宽度
   const getCollapsedWidth = () => {
@@ -536,9 +607,38 @@ export function FloatWindow() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const handleDismiss = (id: string) => {
+  const handleDismiss = async (id: string) => {
+    // 先乐观更新 UI
     setItems(prev => prev.filter(item => item.id !== id));
+    // 调用后端（会持久化到 completed queue）
+    try {
+      await invoke("dismiss_review_item", { id });
+      // 刷新 completed 列表
+      loadCompletedItems(true);
+    } catch (e) {
+      console.error("Failed to dismiss item:", e);
+    }
   };
+
+  const handleClearCompleted = async () => {
+    try {
+      await invoke("clear_completed_queue");
+      setCompletedItems([]);
+      setCompletedOffset(0);
+      setCompletedHasMore(false);
+    } catch (e) {
+      console.error("Failed to clear completed queue:", e);
+    }
+  };
+
+  // 无限滚动：当滚动到底部时加载更多（仅在显示全部时）
+  const handleScroll = useCallback(() => {
+    if (!listRef.current || showOnlyPending || !completedHasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = listRef.current;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      loadCompletedItems(false);
+    }
+  }, [showOnlyPending, completedHasMore, loadCompletedItems]);
 
   const formatTime = (timestamp: number) => {
     // timestamp 从后端来的是秒，Date.now() 是毫秒
@@ -584,16 +684,12 @@ export function FloatWindow() {
               animate={{ opacity: 1 }}
               className="flex items-center gap-2 flex-1"
             >
-              <ClipboardList className="w-5 h-5 shrink-0" />
+              <LovcodeLogo className="w-5 h-5 shrink-0" />
               <span className="font-medium text-sm flex-1">Lovcode Messages</span>
-              <GlowButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // 发光按钮功能预留
-                }}
-              >
-                <Sparkles className="w-4 h-4" />
-              </GlowButton>
+              <MiniSwitch
+                checked={showOnlyPending}
+                onChange={setShowOnlyPending}
+              />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -622,63 +718,108 @@ export function FloatWindow() {
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="px-3 pb-3 overflow-hidden"
+              className="px-3 pb-3 overflow-hidden flex flex-col"
             >
-              <div className="flex items-center justify-between mb-2 text-xs opacity-80">
-                <span>{items.length} pending</span>
+              {/* 状态栏 */}
+              <div className="flex items-center gap-1 mb-2 text-xs opacity-80">
+                <span>
+                  {showOnlyPending
+                    ? `${items.length} pending`
+                    : `${items.length} pending · ${completedItems.length}${completedHasMore ? "+" : ""} done`}
+                </span>
+                {!showOnlyPending && completedItems.length > 0 && (
+                  <button
+                    onClick={handleClearCompleted}
+                    className="ml-auto p-1 text-white/40 hover:text-white/80 transition-colors"
+                    title="Clear completed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Items list */}
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {items.map((item, index) => {
-                  const isHovered = hoveredId === item.id;
-                  return (
-                    <motion.div
-                      key={item.id}
-                      data-item-id={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => handleItemClick(item)}
-                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors cursor-pointer ${
-                        isHovered ? "bg-white/20" : "bg-white/10"
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {item.title}
-                          {item.tmux_window && (
-                            <span className="text-xs opacity-60 font-normal ml-1">
-                              ({item.tmux_window}, {item.tmux_pane})
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs opacity-70 truncate">
-                          #{item.seq} · {formatTime(item.timestamp)}
-                        </p>
-                      </div>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDismiss(item.id);
-                        }}
-                        className={`p-1 rounded transition-opacity ${
-                          isHovered ? "opacity-100 bg-white/10" : "opacity-0"
-                        }`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </motion.button>
-                    </motion.div>
-                  );
-                })}
+              {/* Virtualized Items list */}
+              <div
+                ref={listRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto"
+                style={{ maxHeight: 200 }}
+              >
+                {displayItems.length > 0 ? (
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const item = displayItems[virtualRow.index];
+                      const isHovered = hoveredId === item.id;
+                      const isCompleted = completedItems.some(c => c.id === item.id);
+                      return (
+                        <div
+                          key={item.id}
+                          data-item-id={item.id}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                          className="py-1"
+                        >
+                          <div
+                            onClick={() => !isCompleted && handleItemClick(item)}
+                            className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                              isCompleted ? "cursor-default" : "cursor-pointer"
+                            } ${isHovered ? "bg-white/20" : "bg-white/10"} ${
+                              isCompleted ? "opacity-70" : ""
+                            }`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium truncate ${isCompleted ? "line-through opacity-70" : ""}`}>
+                                {item.title}
+                                {item.tmux_window && (
+                                  <span className="text-xs opacity-60 font-normal ml-1">
+                                    ({item.tmux_window}, {item.tmux_pane})
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs opacity-70 truncate">
+                                #{item.seq} · {formatTime(item.timestamp)}
+                              </p>
+                            </div>
+                            {!isCompleted && (
+                              <motion.button
+                                whileTap={{ scale: 0.9 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDismiss(item.id);
+                                }}
+                                className={`p-1 rounded transition-opacity ${
+                                  isHovered ? "opacity-100 bg-white/10" : "opacity-0"
+                                }`}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </motion.button>
+                            )}
+                            {isCompleted && (
+                              <Check className="w-4 h-4 text-green-400/70" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-sm opacity-70">
+                    {showOnlyPending ? "No pending reviews" : "No messages"}
+                  </div>
+                )}
               </div>
-
-              {items.length === 0 && (
-                <div className="text-center py-4 text-sm opacity-70">
-                  No pending reviews
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>

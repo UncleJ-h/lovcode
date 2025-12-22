@@ -103,6 +103,50 @@ static SEARCH_INDEX: Mutex<Option<SearchIndex>> = Mutex::new(None);
 // Global review queue for notification server
 static REVIEW_QUEUE: LazyLock<Mutex<Vec<ReviewItem>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
+// Global completed queue for dismissed items
+static COMPLETED_QUEUE: LazyLock<Mutex<Vec<ReviewItem>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+// Completed queue persistence path
+fn get_completed_queue_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovcode")
+        .join("completed_queue.jsonl")
+}
+
+// Load completed queue from disk
+fn load_completed_queue() {
+    let path = get_completed_queue_path();
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            let mut queue = COMPLETED_QUEUE.lock().unwrap();
+            for line in content.lines() {
+                if let Ok(item) = serde_json::from_str::<ReviewItem>(line) {
+                    queue.push(item);
+                }
+            }
+        }
+    }
+}
+
+// Append a completed item to disk
+fn persist_completed_item(item: &ReviewItem) {
+    let path = get_completed_queue_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string(item) {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(file, "{}", json);
+        }
+    }
+}
+
 // Global auto-increment sequence number for review items
 static REVIEW_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -1899,6 +1943,61 @@ fn get_review_queue() -> Vec<ReviewItem> {
 }
 
 #[tauri::command]
+fn get_completed_queue(limit: Option<usize>, offset: Option<usize>) -> Vec<ReviewItem> {
+    let queue = COMPLETED_QUEUE.lock().unwrap();
+    let skip = offset.unwrap_or(0);
+    let take = limit.unwrap_or(50);
+    // Return newest first (reverse order since we append)
+    queue.iter().rev().skip(skip).take(take).cloned().collect()
+}
+
+#[tauri::command]
+fn dismiss_review_item(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
+    let dismissed_item = {
+        let mut queue = REVIEW_QUEUE.lock().unwrap();
+        let pos = queue.iter().position(|item| item.id == id);
+        pos.map(|i| queue.remove(i))
+    };
+
+    if let Some(mut item) = dismissed_item {
+        // Update timestamp to completion time
+        item.timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Add to completed queue
+        {
+            let mut completed = COMPLETED_QUEUE.lock().unwrap();
+            completed.push(item.clone());
+        }
+
+        // Persist to disk
+        persist_completed_item(&item);
+
+        // Emit updated queues to frontend
+        let pending = REVIEW_QUEUE.lock().unwrap().clone();
+        let _ = app_handle.emit("review-queue-update", pending);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_completed_queue() -> Result<(), String> {
+    {
+        let mut queue = COMPLETED_QUEUE.lock().unwrap();
+        queue.clear();
+    }
+    // Remove persistence file
+    let path = get_completed_queue_path();
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
     let distill_dir = get_distill_dir();
     let index_path = distill_dir.join("index.jsonl");
@@ -3181,6 +3280,9 @@ pub fn run() {
             // Load persisted review sequence number
             load_review_seq();
 
+            // Load persisted completed queue
+            load_completed_queue();
+
             // Start notification HTTP server
             start_notify_server(app.handle().clone());
 
@@ -3405,6 +3507,9 @@ pub fn run() {
             get_reference_doc,
             emit_review_queue,
             get_review_queue,
+            get_completed_queue,
+            dismiss_review_item,
+            clear_completed_queue,
             navigate_to_tmux_pane,
             set_cursor,
             get_cursor_position_in_window,
