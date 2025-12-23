@@ -3483,6 +3483,7 @@ function SettingsView({
   const [search, setSearch] = useState("");
   const [applyStatus, setApplyStatus] = useState<Record<string, "idle" | "loading" | "success" | "error">>({});
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyHint, setApplyHint] = useState<Record<string, string>>({});
   const [testStatus, setTestStatus] = usePersistedState<Record<string, "idle" | "loading" | "success" | "error">>(
     "lovcode:settings:routerTestStatus",
     {}
@@ -3746,6 +3747,15 @@ function SettingsView({
     }
 
     setTestStatus((prev) => ({ ...prev, [presetKey]: "loading" }));
+
+    // anthropic-subscription uses OAuth, no env vars needed - just show guidance
+    if (presetKey === "anthropic-subscription") {
+      setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: "Run /login in Claude Code to authenticate" }));
+      setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
+      return;
+    }
+
     const envSource = envOverride ?? rawEnv;
 
     try {
@@ -3834,6 +3844,7 @@ function SettingsView({
 
     setApplyStatus((prev) => ({ ...prev, [presetKey]: "loading" }));
     setApplyError(null);
+    setApplyHint((prev) => ({ ...prev, [presetKey]: "" }));
 
     try {
       // Parse template, apply key mappings and inject extra env
@@ -3841,7 +3852,10 @@ function SettingsView({
       const keyMapping = presetEnvKeyMappings[presetKey] || {};
       const extraEnv = presetExtraEnv[presetKey] || {};
 
-      if (parsed.env) {
+      // For anthropic-subscription, clear all env vars (subscription doesn't need API keys)
+      if (presetKey === "anthropic-subscription") {
+        parsed.env = { CLAUDE_CODE_USE_OAUTH: "1" };
+      } else if (parsed.env) {
         // Rename keys according to mapping
         for (const [fromKey, toKey] of Object.entries(keyMapping)) {
           if (fromKey in parsed.env) {
@@ -3860,6 +3874,15 @@ function SettingsView({
       const updated = await invoke<ClaudeSettings>("get_settings");
       setSettings(updated);
       setApplyStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+
+      // Show hint for anthropic-subscription
+      if (presetKey === "anthropic-subscription") {
+        setApplyHint((prev) => ({
+          ...prev,
+          [presetKey]: "Run /login in Claude Code and select Subscription to complete setup",
+        }));
+      }
+
       setTimeout(() => {
         setApplyStatus((prev) => ({ ...prev, [presetKey]: "idle" }));
       }, 1500);
@@ -4299,6 +4322,18 @@ function SettingsView({
                   <div className="flex flex-wrap items-center justify-end gap-2 text-right">
                     {isSuccess && <span className="text-xs text-green-600">Saved</span>}
                     {status === "error" && <span className="text-xs text-red-600">Failed</span>}
+                    {applyHint[preset.key] && (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-xs text-amber-600">{applyHint[preset.key]}</span>
+                        <button
+                          className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink"
+                          onClick={() => setApplyHint((prev) => ({ ...prev, [preset.key]: "" }))}
+                          title="Dismiss"
+                        >
+                          <Cross2Icon className="w-3 h-3" />
+                        </button>
+                      </span>
+                    )}
                     {testStatus[preset.key] === "loading" && <span className="text-xs text-muted-foreground">Testing...</span>}
                     {(testStatus[preset.key] === "success" || testStatus[preset.key] === "error") && (
                       <span className="inline-flex items-center gap-1">

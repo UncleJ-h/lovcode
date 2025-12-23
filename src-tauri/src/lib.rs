@@ -3516,6 +3516,9 @@ fn setup_float_window_macos(app: &tauri::App) {
                 println!("[DEBUG] Float window macOS properties configured with NonactivatingPanel style");
             }
         }
+
+        // 强制隐藏，防止 macOS 窗口状态恢复功能自动显示
+        let _ = window.hide();
     }
 }
 
@@ -4315,6 +4318,43 @@ pub fn run() {
             get_cursor_position_in_window,
             get_cursor_position
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            use tauri::{Manager, RunEvent, WebviewWindowBuilder, WebviewUrl};
+
+            match event {
+                RunEvent::Reopen { has_visible_windows, .. } => {
+                    println!("[Lovcode] Dock clicked! has_visible_windows: {}", has_visible_windows);
+
+                    // 无论是否有"可见窗口"，都尝试打开主窗口
+                    // 因为 float 窗口可能被计入 has_visible_windows
+                    if let Some(window) = app.get_webview_window("main") {
+                        println!("[Lovcode] Main window exists, showing...");
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    } else {
+                        println!("[Lovcode] Main window gone, recreating...");
+                        match WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                            .title("Lovcode")
+                            .inner_size(800.0, 600.0)
+                            .title_bar_style(tauri::TitleBarStyle::Overlay)
+                            .hidden_title(true)
+                            .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
+                            .build()
+                        {
+                            Ok(window) => {
+                                println!("[Lovcode] Window created successfully");
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                            Err(e) => {
+                                println!("[Lovcode] Failed to create window: {:?}", e);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        });
 }
