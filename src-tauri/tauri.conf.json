@@ -23,23 +23,6 @@
           "x": 16,
           "y": 28
         }
-      },
-      {
-        "label": "float",
-        "title": "",
-        "url": "/float.html",
-        "width": 121,
-        "height": 48,
-        "x": 100,
-        "y": 100,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "resizable": false,
-        "visible": false,
-        "acceptFirstMouse": true,
-        "focus": false
       }
     ],
     "security": {
