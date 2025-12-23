@@ -4,7 +4,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::{
+    Emitter, Manager,
+    menu::{Menu, MenuItem},
+    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
+    image::Image,
+};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{self, Value as TantivyValue, *};
@@ -1978,6 +1983,9 @@ fn dismiss_review_item(app_handle: tauri::AppHandle, id: String) -> Result<(), S
         // Emit updated queues to frontend
         let pending = REVIEW_QUEUE.lock().unwrap().clone();
         let _ = app_handle.emit("review-queue-update", pending);
+
+        // Update tray menu
+        update_tray_menu(&app_handle);
     }
 
     Ok(())
@@ -3332,6 +3340,9 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
                 let queue = REVIEW_QUEUE.lock().unwrap().clone();
                 let _ = app.emit("review-queue-update", queue);
 
+                // Update tray menu
+                update_tray_menu(&app);
+
                 warp::reply::json(&serde_json::json!({"ok": true, "id": item.id}))
             });
 
@@ -3360,6 +3371,113 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
             .run(([127, 0, 0, 1], NOTIFY_SERVER_PORT))
             .await;
     });
+}
+
+// Build tray menu from review queue
+fn build_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Menu<R>, tauri::Error> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+
+    let queue = REVIEW_QUEUE.lock().unwrap();
+    let mut menu_builder = MenuBuilder::new(app);
+
+    if queue.is_empty() {
+        let empty_item = MenuItemBuilder::with_id("empty", "No messages")
+            .enabled(false)
+            .build(app)?;
+        menu_builder = menu_builder.item(&empty_item);
+    } else {
+        // Sort by timestamp ascending (oldest first) and take up to 10
+        let mut sorted: Vec<_> = queue.iter().collect();
+        sorted.sort_by_key(|item| item.timestamp);
+
+        for item in sorted.iter().take(10) {
+            let label = format!("#{} {}", item.seq, truncate_str(&item.title, 30));
+            let menu_item = MenuItemBuilder::with_id(format!("msg:{}", item.id), label)
+                .build(app)?;
+            menu_builder = menu_builder.item(&menu_item);
+        }
+
+        if queue.len() > 10 {
+            let more_item = MenuItemBuilder::with_id("more", format!("... and {} more", queue.len() - 10))
+                .enabled(false)
+                .build(app)?;
+            menu_builder = menu_builder.item(&more_item);
+        }
+    }
+
+    menu_builder = menu_builder.separator();
+
+    let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window")
+        .build(app)?;
+    let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window")
+        .build(app)?;
+
+    menu_builder
+        .item(&show_main)
+        .item(&show_float)
+        .build()
+}
+
+// Truncate string for menu display
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.chars().count() <= max_len {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_len - 1).collect();
+        format!("{}…", truncated)
+    }
+}
+
+// Consume a review item (dismiss and navigate)
+fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &str) {
+    // Find the item first
+    let item = {
+        let queue = REVIEW_QUEUE.lock().unwrap();
+        queue.iter().find(|i| i.id == msg_id).cloned()
+    };
+
+    if let Some(item) = item {
+        // Navigate to tmux pane if available
+        if let (Some(session), Some(window), Some(pane)) =
+            (&item.tmux_session, &item.tmux_window, &item.tmux_pane) {
+            let _ = std::process::Command::new("tmux")
+                .args(["select-window", "-t", &format!("{}:{}", session, window)])
+                .status();
+            let _ = std::process::Command::new("tmux")
+                .args(["select-pane", "-t", &format!("{}:{}.{}", session, window, pane)])
+                .status();
+        }
+
+        // Remove from queue
+        {
+            let mut queue = REVIEW_QUEUE.lock().unwrap();
+            if let Some(pos) = queue.iter().position(|i| i.id == msg_id) {
+                let removed = queue.remove(pos);
+
+                // Add to completed queue
+                let mut completed = COMPLETED_QUEUE.lock().unwrap();
+                completed.insert(0, removed);
+                // Keep only last 100 completed items
+                completed.truncate(100);
+                save_completed_queue();
+            }
+        }
+
+        // Emit update event
+        let _ = app.emit("review-queue-update", ());
+
+        // Update tray menu
+        update_tray_menu(app);
+    }
+}
+
+// Update tray menu (call after queue changes)
+fn update_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Ok(menu) = build_tray_menu(app) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3471,6 +3589,33 @@ pub fn run() {
                 .build()?;
 
             app.set_menu(menu)?;
+
+            // Create system tray
+            let tray_menu = build_tray_menu(app)?;
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&tray_menu)
+                .menu_on_left_click(true)
+                .tooltip("Lovcode Messages")
+                .on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    if id.starts_with("msg:") {
+                        // Extract message ID and consume it
+                        let msg_id = &id[4..];
+                        consume_review_item(app, msg_id);
+                    } else if id == "show_main" {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    } else if id == "show_float" {
+                        if let Some(window) = app.get_webview_window("float") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             Ok(())
         })

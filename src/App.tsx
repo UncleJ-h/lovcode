@@ -36,6 +36,7 @@ import {
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Button } from "./components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
 import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
 import { DocumentReader } from "./components/DocumentReader";
 import { invoke } from "@tauri-apps/api/core";
@@ -3841,12 +3842,18 @@ function SettingsView({
                                 <Button size="icon" variant="outline" className="h-8 w-8 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)} title="Disable" aria-label="Disable">
                                   <MinusCircledIcon />
                                 </Button>
-                                <span className="relative group">
-                                  <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
-                                    <TrashIcon />
-                                  </Button>
-                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
-                                </span>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
+                                          <TrashIcon />
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
                               </>
                             )}
                             text={(
@@ -3860,12 +3867,18 @@ function SettingsView({
                                 <Button size="sm" variant="outline" className="text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)}>
                                   Disable
                                 </Button>
-                                <span className="relative group">
-                                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
-                                    Delete
-                                  </Button>
-                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
-                                </span>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                          Delete
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
                               </>
                             )}
                           />
@@ -3913,12 +3926,18 @@ function SettingsView({
                                 <Button size="icon" variant="outline" className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)} title="Enable" aria-label="Enable">
                                   <PlusCircledIcon />
                                 </Button>
-                                <span className="relative group">
-                                  <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
-                                    <TrashIcon />
-                                  </Button>
-                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
-                                </span>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
+                                          <TrashIcon />
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
                               </>
                             )}
                             text={(
@@ -3930,12 +3949,18 @@ function SettingsView({
                                 <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)}>
                                   Enable
                                 </Button>
-                                <span className="relative group">
-                                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
-                                    Delete
-                                  </Button>
-                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
-                                </span>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                          Delete
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
                               </>
                             )}
                           />
