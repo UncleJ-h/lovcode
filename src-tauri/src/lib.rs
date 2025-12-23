@@ -3522,6 +3522,16 @@ fn setup_float_window_macos(app: &tauri::App) {
     }
 }
 
+/// 激活应用并将其带到前台 (macOS)
+#[cfg(target_os = "macos")]
+fn activate_app() {
+    use objc::*;
+    unsafe {
+        let ns_app: objc::runtime::Object = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![&ns_app, activateIgnoringOtherApps: objc::runtime::YES];
+    }
+}
+
 // ============================================================================
 // Cursor Control (macOS)
 // ============================================================================
@@ -4138,6 +4148,19 @@ pub fn run() {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
+                        } else {
+                            // 重建主窗口
+                            if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                                .title("Lovcode")
+                                .inner_size(800.0, 600.0)
+                                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                                .hidden_title(true)
+                                .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
+                                .build()
+                            {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
                     } else if id == "tray_toggle_float" {
                         if let Some(window) = app.get_webview_window("float") {
@@ -4194,16 +4217,26 @@ pub fn run() {
                     } else {
                         // Recreate main window
                         #[cfg(target_os = "macos")]
-                        let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                        if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                             .title("Lovcode")
                             .inner_size(800.0, 600.0)
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
-                            .hidden_title(true);
+                            .hidden_title(true)
+                            .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
+                            .build()
+                        {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                         #[cfg(not(target_os = "macos"))]
-                        let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                        if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                             .title("Lovcode")
-                            .inner_size(800.0, 600.0);
-                        let _ = builder.build();
+                            .inner_size(800.0, 600.0)
+                            .build()
+                        {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                 }
                 "toggle_float" => {
