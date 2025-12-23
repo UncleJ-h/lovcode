@@ -123,8 +123,6 @@ interface FeatureConfig {
 // Group 2: Configuration
 // Group 3: Marketplace
 const FEATURES: FeatureConfig[] = [
-  // History
-  { type: "chat", label: "Chats", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
   // Projects (parallel development)
   { type: "projects", label: "Projects", icon: "📁", description: "Parallel development projects", available: true, group: "history" },
   // Knowledge (collapsible submenu)
@@ -584,8 +582,10 @@ function App() {
             </button>
           </div>
 
-          {/* History Group */}
-          <div className="px-2 mb-2">
+          <div className="mx-4 border-t border-border" />
+
+          {/* Projects & Knowledge */}
+          <div className="px-2 py-2">
             {FEATURES.filter(f => f.group === "history").map((feature) => (
               <FeatureButton
                 key={feature.type}
@@ -594,8 +594,6 @@ function App() {
                 onClick={() => handleFeatureClick(feature.type)}
               />
             ))}
-
-            {/* Knowledge Collapsible Menu */}
             <Collapsible defaultOpen={currentFeature?.startsWith("kb-")}>
               <CollapsibleTrigger className="w-full group">
                 <div className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
@@ -623,8 +621,62 @@ function App() {
             </Collapsible>
           </div>
 
-          {/* Marketplace Group */}
-          <div className="px-2 mb-2">
+          <div className="mx-4 border-t border-border" />
+
+          {/* Configuration & Features */}
+          <div className="px-2 py-2">
+            <button
+              onClick={() => handleFeatureClick("settings")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                currentFeature === "settings"
+                  ? "bg-primary/10 text-primary"
+                  : "text-ink hover:bg-card-alt"
+              }`}
+            >
+              <span className="text-lg">⚙️</span>
+              <span className="text-sm">Configuration</span>
+            </button>
+            <Collapsible defaultOpen={FEATURES.some(f => f.group === "config" && f.type !== "settings" && currentFeature === f.type)}>
+              <CollapsibleTrigger className="w-full group">
+                <div className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                  FEATURES.some(f => f.group === "config" && f.type !== "settings" && currentFeature === f.type)
+                    ? "text-primary"
+                    : "text-ink hover:bg-card-alt"
+                }`}>
+                  <span className="text-lg">🧩</span>
+                  <span className="text-sm flex-1">Features</span>
+                  <ChevronDown className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180" />
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleBody className="pl-4 flex flex-col gap-0.5">
+                {FEATURES.filter(f => f.group === "config" && f.type !== "settings").map((feature) => (
+                  <FeatureButton
+                    key={feature.type}
+                    feature={feature}
+                    active={currentFeature === feature.type}
+                    onClick={() => handleFeatureClick(feature.type)}
+                    compact
+                  />
+                ))}
+              </CollapsibleBody>
+            </Collapsible>
+            <button
+              onClick={() => handleFeatureClick("chat")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                currentFeature === "chat"
+                  ? "bg-primary/10 text-primary"
+                  : "text-ink hover:bg-card-alt"
+              }`}
+            >
+              <span className="text-lg">💬</span>
+              <span className="text-sm">Chats</span>
+            </button>
+          </div>
+
+          <div className="mx-4 border-t border-border" />
+
+          {/* Marketplace */}
+          <div className="px-2 py-2">
             <Collapsible defaultOpen={view.type === "marketplace" || view.type === "template-detail"}>
               <CollapsibleTrigger className="w-full group">
                 <div className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
@@ -658,19 +710,6 @@ function App() {
                 })}
               </CollapsibleBody>
             </Collapsible>
-          </div>
-
-          {/* Config Group */}
-          <div className="px-2 py-2 border-t border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide px-3 py-2">Features</p>
-            {FEATURES.filter(f => f.group === "config").map((feature) => (
-              <FeatureButton
-                key={feature.type}
-                feature={feature}
-                active={currentFeature === feature.type}
-                onClick={() => handleFeatureClick(feature.type)}
-              />
-            ))}
           </div>
         </div>
 
