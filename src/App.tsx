@@ -5,7 +5,7 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
 import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FolderInput, FlaskConical } from "lucide-react";
-import { EyeOpenIcon, EyeClosedIcon, Pencil1Icon, TrashIcon, CheckIcon, Cross1Icon, RocketIcon } from "@radix-ui/react-icons";
+import { EyeOpenIcon, EyeClosedIcon, Pencil1Icon, TrashIcon, CheckIcon, Cross1Icon, RocketIcon, MinusCircledIcon, PlusCircledIcon } from "@radix-ui/react-icons";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -3493,11 +3493,33 @@ function SettingsView({
       Object.entries(envValue as Record<string, unknown>).map(([key, v]) => [key, String(v ?? "")])
     );
   };
+  const getCustomEnvKeysFromSettings = (value: ClaudeSettings | null): string[] => {
+    const keys = value?.raw && typeof value.raw === "object"
+      ? (value.raw as Record<string, unknown>)._lovcode_custom_env_keys
+      : null;
+    if (!keys || !Array.isArray(keys)) return [];
+    return keys.filter((k): k is string => typeof k === "string");
+  };
+  const getDisabledEnvFromSettings = (value: ClaudeSettings | null): Record<string, string> => {
+    const disabled = value?.raw && typeof value.raw === "object"
+      ? (value.raw as Record<string, unknown>)._lovcode_disabled_env
+      : null;
+    if (!disabled || typeof disabled !== "object" || Array.isArray(disabled)) return {};
+    return Object.fromEntries(
+      Object.entries(disabled as Record<string, unknown>).map(([key, v]) => [key, String(v ?? "")])
+    );
+  };
   const rawEnv = getRawEnvFromSettings(settings);
+  const customEnvKeys = getCustomEnvKeysFromSettings(settings);
+  const disabledEnv = getDisabledEnvFromSettings(settings);
   const envEntries = Object.entries(rawEnv);
+  const disabledEnvEntries = Object.entries(disabledEnv);
   const filteredEnvEntries = !search
     ? envEntries
     : envEntries.filter(([key]) => key.toLowerCase().includes(search.toLowerCase()));
+  const filteredDisabledEnvEntries = !search
+    ? disabledEnvEntries
+    : disabledEnvEntries.filter(([key]) => key.toLowerCase().includes(search.toLowerCase()));
   const proxyPresets = [
     {
       key: "corporate",
@@ -3661,10 +3683,21 @@ function SettingsView({
     if (editingEnvKey === key) setEditingEnvKey(null);
   };
 
+  const handleEnvDisable = async (key: string) => {
+    await invoke("disable_settings_env", { envKey: key });
+    await refreshSettings();
+    if (editingEnvKey === key) setEditingEnvKey(null);
+  };
+
+  const handleEnvEnable = async (key: string) => {
+    await invoke("enable_settings_env", { envKey: key });
+    await refreshSettings();
+  };
+
   const handleEnvCreate = async () => {
     const key = newEnvKey.trim();
     if (!key) return;
-    await invoke("update_settings_env", { envKey: key, envValue: newEnvValue });
+    await invoke("update_settings_env", { envKey: key, envValue: newEnvValue, isNew: true });
     await refreshSettings();
     setNewEnvKey("");
     setNewEnvValue("");
@@ -3744,10 +3777,12 @@ function SettingsView({
               <tbody>
                 {filteredEnvEntries.map(([key, value]) => {
                   const isRevealed = !!revealedEnvKeys[key];
+                  const isCustom = customEnvKeys.includes(key);
                   return (
                     <tr key={key} className="border-b border-border/60 last:border-0">
                       <td className="py-2 pr-2">
                         <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded font-mono">{key}</span>
+                        {isCustom && <span className="ml-1 text-[10px] text-muted-foreground">(custom)</span>}
                       </td>
                       <td className="py-2 pr-2">
                         {editingEnvKey === key ? (
@@ -3803,9 +3838,15 @@ function SettingsView({
                                 <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleEnvEdit(key, value)} title="Edit" aria-label="Edit">
                                   <Pencil1Icon />
                                 </Button>
-                                <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleEnvDelete(key)} title="Delete" aria-label="Delete">
-                                  <TrashIcon />
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)} title="Disable" aria-label="Disable">
+                                  <MinusCircledIcon />
                                 </Button>
+                                <span className="relative group">
+                                  <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
+                                    <TrashIcon />
+                                  </Button>
+                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
+                                </span>
                               </>
                             )}
                             text={(
@@ -3816,9 +3857,15 @@ function SettingsView({
                                 <Button size="sm" variant="outline" onClick={() => handleEnvEdit(key, value)}>
                                   Edit
                                 </Button>
-                                <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleEnvDelete(key)}>
-                                  Delete
+                                <Button size="sm" variant="outline" className="text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)}>
+                                  Disable
                                 </Button>
+                                <span className="relative group">
+                                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                    Delete
+                                  </Button>
+                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
+                                </span>
                               </>
                             )}
                           />
@@ -3832,6 +3879,74 @@ function SettingsView({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">No env variables configured.</p>
+        )}
+
+        {filteredDisabledEnvEntries.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-border/60">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Disabled</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <tbody>
+                  {filteredDisabledEnvEntries.map(([key, value]) => {
+                    const isRevealed = !!revealedEnvKeys[key];
+                    const isCustom = customEnvKeys.includes(key);
+                    return (
+                      <tr key={key} className="border-b border-border/60 last:border-0 opacity-60">
+                        <td className="py-2 pr-2">
+                          <span className="text-xs bg-muted/50 text-muted-foreground px-2 py-1 rounded font-mono line-through">{key}</span>
+                          {isCustom && <span className="ml-1 text-[10px] text-muted-foreground">(custom)</span>}
+                        </td>
+                        <td className="py-2 pr-2">
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {isRevealed ? (value || "(empty)") : "••••••"}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 whitespace-nowrap text-right env-actions-cell w-[1%]">
+                          <ResponsiveActions
+                            variant="env"
+                            icon={(
+                              <>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => toggleEnvReveal(key)} title={isRevealed ? "Hide" : "View"} aria-label={isRevealed ? "Hide" : "View"}>
+                                  {isRevealed ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                                </Button>
+                                <div className="h-8 w-8" />
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)} title="Enable" aria-label="Enable">
+                                  <PlusCircledIcon />
+                                </Button>
+                                <span className="relative group">
+                                  <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} aria-label="Delete" disabled={!isCustom}>
+                                    <TrashIcon />
+                                  </Button>
+                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
+                                </span>
+                              </>
+                            )}
+                            text={(
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => toggleEnvReveal(key)}>
+                                  {isRevealed ? "Hide" : "View"}
+                                </Button>
+                                <Button size="sm" variant="outline" className="invisible">Edit</Button>
+                                <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)}>
+                                  Enable
+                                </Button>
+                                <span className="relative group">
+                                  <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                    Delete
+                                  </Button>
+                                  {!isCustom && <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-popover text-popover-foreground border rounded shadow-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity delay-500 pointer-events-none">Only custom can be deleted</span>}
+                                </span>
+                              </>
+                            )}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </CollapsibleCard>
 

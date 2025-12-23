@@ -121,6 +121,7 @@ export function FloatWindow() {
   const [expandDirection, setExpandDirection] = useState<"left" | "right">(savedState.expandDirection ?? "right");
   const [snapSide, setSnapSide] = useState<"left" | "right" | null>(savedState.snapSide ?? null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
   const isDraggingRef = useRef(false);
   const initializedRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -451,14 +452,11 @@ export function FloatWindow() {
     overscan: 5,
   });
 
-  // 计算收起状态的宽度
+  // 计算收起状态的宽度（仅徽章）
   const getCollapsedWidth = () => {
     const paddingX = 12;
     const badgeSize = 24;
-    const gap = 8;
-    const brandName = "Lovcode";
-    const charWidth = 7;
-    return Math.ceil(paddingX * 2 + badgeSize + gap + brandName.length * charWidth);
+    return paddingX * 2 + badgeSize;
   };
 
   // 初始化窗口大小和位置
@@ -518,8 +516,17 @@ export function FloatWindow() {
     handleDismiss(item.id);
   };
 
+  // 消耗最早的消息（复用 handleItemClick 逻辑）
+  const consumeOldestMessage = useCallback(() => {
+    if (items.length > 0) {
+      const oldest = [...items].sort((a, b) => a.timestamp - b.timestamp)[0];
+      handleItemClick(oldest);
+    }
+  }, [items]);
+
   // 拖拽 + 点击判断
   const handleMouseDown = (e: React.MouseEvent) => {
+    const isRightClick = e.button === 2;
     const startX = e.clientX;
     const startY = e.clientY;
     let isDragging = false;
@@ -546,6 +553,17 @@ export function FloatWindow() {
 
       // 没有拖拽，视为点击
       if (!isDragging) {
+        // 折叠模式下：左键消耗消息，右键展开
+        if (!isExpanded && !isRightClick) {
+          if (items.length > 0) {
+            consumeOldestMessage();
+          } else {
+            // 无消息时抖动提示
+            setShake(true);
+            setTimeout(() => setShake(false), 300);
+          }
+          return;
+        }
         const win = getCurrentWindow();
         const pos = await win.outerPosition();
 
@@ -674,9 +692,11 @@ export function FloatWindow() {
       className={`w-screen h-screen bg-primary text-primary-foreground overflow-hidden flex flex-col ${isExpanded ? "rounded-xl" : collapsedRounding}`}
     >
         {/* Header - click to toggle, drag to move */}
+        {/* Collapsed: left click = consume oldest, right click = expand */}
         <div
           className={`flex items-center gap-2 cursor-pointer select-none shrink-0 ${isExpanded ? "justify-center p-3" : "px-3 py-2 h-full"}`}
           onMouseDown={handleMouseDown}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {isExpanded ? (
             <motion.div
@@ -701,12 +721,13 @@ export function FloatWindow() {
               </button>
             </motion.div>
           ) : (
-            <div className={`flex items-center w-full ${snapSide === "right" ? "flex-row-reverse" : ""}`}>
-              <span className="text-xs tracking-wide opacity-90 flex-1 px-1">Lovcode</span>
-              <span className="w-6 h-6 flex items-center justify-center text-xs font-bold bg-white/20 rounded-full shrink-0">
-                {items.length}
-              </span>
-            </div>
+            <motion.span
+              className="w-6 h-6 flex items-center justify-center text-xs font-bold bg-white/20 rounded-full"
+              animate={shake ? { x: [-2, 2, -2, 2, 0] } : {}}
+              transition={{ duration: 0.3 }}
+            >
+              {items.length}
+            </motion.span>
           )}
         </div>
 

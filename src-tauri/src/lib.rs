@@ -2831,7 +2831,7 @@ fn update_mcp_env(server_name: String, env_key: String, env_value: String) -> Re
 }
 
 #[tauri::command]
-fn update_settings_env(env_key: String, env_value: String) -> Result<(), String> {
+fn update_settings_env(env_key: String, env_value: String, is_new: Option<bool>) -> Result<(), String> {
     let settings_path = get_claude_dir().join("settings.json");
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
@@ -2844,6 +2844,21 @@ fn update_settings_env(env_key: String, env_value: String) -> Result<(), String>
         settings["env"] = serde_json::json!({});
     }
     settings["env"][&env_key] = serde_json::Value::String(env_value);
+
+    // Track custom env keys when is_new=true
+    if is_new == Some(true) {
+        let custom_keys = settings
+            .get("_lovcode_custom_env_keys")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let key_val = serde_json::Value::String(env_key.clone());
+        if !custom_keys.contains(&key_val) {
+            let mut new_keys = custom_keys;
+            new_keys.push(key_val);
+            settings["_lovcode_custom_env_keys"] = serde_json::Value::Array(new_keys);
+        }
+    }
 
     let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     fs::write(&settings_path, output).map_err(|e| e.to_string())?;
@@ -2863,6 +2878,84 @@ fn delete_settings_env(env_key: String) -> Result<(), String> {
     if let Some(env) = settings.get_mut("env").and_then(|v| v.as_object_mut()) {
         env.remove(&env_key);
     }
+
+    // Also remove from custom keys list
+    if let Some(custom_keys) = settings.get_mut("_lovcode_custom_env_keys").and_then(|v| v.as_array_mut()) {
+        custom_keys.retain(|v| v.as_str() != Some(&env_key));
+    }
+
+    // Also remove from disabled env if present
+    if let Some(disabled) = settings.get_mut("_lovcode_disabled_env").and_then(|v| v.as_object_mut()) {
+        disabled.remove(&env_key);
+    }
+
+    let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, output).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn disable_settings_env(env_key: String) -> Result<(), String> {
+    let settings_path = get_claude_dir().join("settings.json");
+    if !settings_path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    // Get current value before removing
+    let current_value = settings
+        .get("env")
+        .and_then(|v| v.get(&env_key))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Remove from active env
+    if let Some(env) = settings.get_mut("env").and_then(|v| v.as_object_mut()) {
+        env.remove(&env_key);
+    }
+
+    // Store in disabled env
+    if !settings.get("_lovcode_disabled_env").and_then(|v| v.as_object()).is_some() {
+        settings["_lovcode_disabled_env"] = serde_json::json!({});
+    }
+    settings["_lovcode_disabled_env"][&env_key] = serde_json::Value::String(current_value);
+
+    let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, output).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn enable_settings_env(env_key: String) -> Result<(), String> {
+    let settings_path = get_claude_dir().join("settings.json");
+    if !settings_path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    // Get value from disabled env
+    let disabled_value = settings
+        .get("_lovcode_disabled_env")
+        .and_then(|v| v.get(&env_key))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Remove from disabled env
+    if let Some(disabled) = settings.get_mut("_lovcode_disabled_env").and_then(|v| v.as_object_mut()) {
+        disabled.remove(&env_key);
+    }
+
+    // Add back to active env
+    if !settings.get("env").and_then(|v| v.as_object()).is_some() {
+        settings["env"] = serde_json::json!({});
+    }
+    settings["env"][&env_key] = serde_json::Value::String(disabled_value);
 
     let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     fs::write(&settings_path, output).map_err(|e| e.to_string())?;
@@ -3495,6 +3588,8 @@ pub fn run() {
             update_mcp_env,
             update_settings_env,
             delete_settings_env,
+            disable_settings_env,
+            enable_settings_env,
             test_zenmux_connection,
             list_distill_documents,
             get_distill_document,
