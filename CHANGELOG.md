@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+### Patch Changes
+
+- fix(macos): 修复 Dock 点击后窗口无法聚焦的问题，使用延迟激活确保窗口显示完成后再聚焦
+
 ## 0.11.0
 
 ### Minor Changes
