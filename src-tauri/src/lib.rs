@@ -4186,19 +4186,30 @@ pub fn run() {
                             }
                         } else {
                             // 重建主窗口
-                            if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                                .title("Lovcode")
-                                .inner_size(800.0, 600.0)
-                                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                                .hidden_title(true)
-                                .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
-                                .build()
+                            #[cfg(target_os = "macos")]
                             {
-                                let _ = window.show();
-                                #[cfg(target_os = "macos")]
-                                activate_and_focus_window(&window);
-                                #[cfg(not(target_os = "macos"))]
-                                let _ = window.set_focus();
+                                if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                                    .title("Lovcode")
+                                    .inner_size(800.0, 600.0)
+                                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                                    .hidden_title(true)
+                                    .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
+                                    .build()
+                                {
+                                    let _ = window.show();
+                                    activate_and_focus_window(&window);
+                                }
+                            }
+                            #[cfg(not(target_os = "macos"))]
+                            {
+                                if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                                    .title("Lovcode")
+                                    .inner_size(800.0, 600.0)
+                                    .build()
+                                {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
                             }
                         }
                     } else if id == "tray_toggle_float" {
@@ -4397,25 +4408,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            use tauri::{Manager, RunEvent, WebviewWindowBuilder, WebviewUrl};
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::{Manager, RunEvent, WebviewWindowBuilder, WebviewUrl};
 
-            match event {
-                RunEvent::Reopen { has_visible_windows, .. } => {
+                if let RunEvent::Reopen { has_visible_windows, .. } = _event {
                     println!("[Lovcode] Dock clicked! has_visible_windows: {}", has_visible_windows);
 
                     // 无论是否有"可见窗口"，都尝试打开主窗口
                     // 因为 float 窗口可能被计入 has_visible_windows
-                    if let Some(window) = app.get_webview_window("main") {
+                    if let Some(window) = _app.get_webview_window("main") {
                         println!("[Lovcode] Main window exists, showing...");
                         let _ = window.show();
-                        #[cfg(target_os = "macos")]
                         activate_and_focus_window(&window);
-                        #[cfg(not(target_os = "macos"))]
-                        let _ = window.set_focus();
                     } else {
                         println!("[Lovcode] Main window gone, recreating...");
-                        match WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                        match WebviewWindowBuilder::new(_app, "main", WebviewUrl::default())
                             .title("Lovcode")
                             .inner_size(800.0, 600.0)
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
@@ -4426,10 +4435,7 @@ pub fn run() {
                             Ok(window) => {
                                 println!("[Lovcode] Window created successfully");
                                 let _ = window.show();
-                                #[cfg(target_os = "macos")]
                                 activate_and_focus_window(&window);
-                                #[cfg(not(target_os = "macos"))]
-                                let _ = window.set_focus();
                             }
                             Err(e) => {
                                 println!("[Lovcode] Failed to create window: {:?}", e);
@@ -4437,7 +4443,6 @@ pub fn run() {
                         }
                     }
                 }
-                _ => {}
             }
         });
 }
