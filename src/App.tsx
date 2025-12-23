@@ -4145,9 +4145,9 @@ function SettingsView({
 
       {filteredPresets.length > 0 && (
         <CollapsibleCard
-          storageKey="lovcode:settings:routerPresetsOpen"
-          title="Router presets"
-          subtitle="One-click switch between direct, provider router, or corporate network routing"
+          storageKey="lovcode:settings:llmProviderOpen"
+          title="LLM Provider"
+          subtitle="Switch between Anthropic official or third-party providers"
           headerRight={applyError && <p className="text-xs text-red-600">{applyError}</p>}
           bodyClassName="p-3 grid gap-3"
         >

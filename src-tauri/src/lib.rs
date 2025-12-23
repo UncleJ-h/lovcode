@@ -3807,20 +3807,11 @@ fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &st
     };
 
     if let Some(item) = item {
-        // Navigate to tmux pane if available
+        // Navigate to tmux pane if available (reuse navigate_to_tmux_pane for full terminal activation)
         if let (Some(session), Some(window), Some(pane)) =
             (&item.tmux_session, &item.tmux_window, &item.tmux_pane)
         {
-            let _ = std::process::Command::new("tmux")
-                .args(["select-window", "-t", &format!("{}:{}", session, window)])
-                .status();
-            let _ = std::process::Command::new("tmux")
-                .args([
-                    "select-pane",
-                    "-t",
-                    &format!("{}:{}.{}", session, window, pane),
-                ])
-                .status();
+            let _ = navigate_to_tmux_pane(session.clone(), window.clone(), pane.clone());
         }
 
         // Remove from queue
