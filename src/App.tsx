@@ -3487,6 +3487,19 @@ function SettingsView({
 
   // Check if settings JSON contains search term
   const settingsMatchSearch = !search || JSON.stringify(settings?.raw || {}).toLowerCase().includes(search.toLowerCase());
+
+  // Get active provider from settings.raw.lovcode.activeProvider
+  const getActiveProvider = (value: ClaudeSettings | null): string | null => {
+    const lovcode = value?.raw && typeof value.raw === "object"
+      ? (value.raw as Record<string, unknown>).lovcode
+      : null;
+    if (!lovcode || typeof lovcode !== "object") return null;
+    const activeProvider = (lovcode as Record<string, unknown>).activeProvider;
+    return typeof activeProvider === "string" ? activeProvider : null;
+  };
+
+  const activeProvider = getActiveProvider(settings);
+
   const getRawEnvFromSettings = (value: ClaudeSettings | null) => {
     const envValue = value?.raw && typeof value.raw === "object"
       ? (value.raw as Record<string, unknown>).env
@@ -3525,12 +3538,6 @@ function SettingsView({
     : allEnvEntries.filter(([key]) => key.toLowerCase().includes(search.toLowerCase()));
   const proxyPresets = [
     {
-      key: "corporate",
-      label: "Corporate HTTP(S) proxy",
-      description: "Add HTTP_PROXY / HTTPS_PROXY for firewalled networks",
-      templateName: "corporate-proxy",
-    },
-    {
       key: "anthropic-subscription",
       label: "Anthropic Subscription",
       description: "Use Claude Pro/Max subscription via OAuth login",
@@ -3556,6 +3563,22 @@ function SettingsView({
     },
   ];
   const presetFallbacks: Record<string, MarketplaceItem> = {
+    corporate: {
+      name: "corporate-proxy",
+      path: "fallback/corporate-proxy.json",
+      description: "Add HTTP_PROXY / HTTPS_PROXY for firewalled networks.",
+      downloads: null,
+      content: JSON.stringify(
+        {
+          env: {
+            HTTP_PROXY: "http://proxy.example.com:8080",
+            HTTPS_PROXY: "http://proxy.example.com:8080",
+          },
+        },
+        null,
+        2
+      ),
+    },
     "anthropic-subscription": {
       name: "anthropic-subscription",
       path: "fallback/anthropic-subscription.json",
@@ -3791,6 +3814,9 @@ function SettingsView({
         Object.assign(parsed.env, extraEnv);
       }
 
+      // Store active provider in lovcode namespace
+      parsed.lovcode = { activeProvider: presetKey };
+
       await invoke("install_setting_template", { config: JSON.stringify(parsed, null, 2) });
       const updated = await invoke<ClaudeSettings>("get_settings");
       setSettings(updated);
@@ -3891,8 +3917,8 @@ function SettingsView({
 
       <CollapsibleCard
         storageKey="lovcode:settings:envCardOpen"
-        title="API keys (env)"
-        subtitle="Manage env vars used by proxy presets in ~/.claude/settings.json"
+        title="Environment Variables"
+        subtitle="Manage env vars in ~/.claude/settings.json"
         bodyClassName="p-3 space-y-3"
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -3912,6 +3938,31 @@ function SettingsView({
           />
           <Button size="sm" onClick={handleEnvCreate} disabled={!newEnvKey.trim()}>
             Add
+          </Button>
+        </div>
+
+        {/* Corporate Proxy Quick Config */}
+        <div className="flex items-center justify-between gap-3 p-2 rounded-lg border border-dashed border-border bg-card-alt">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-ink">Corporate HTTP(S) Proxy</p>
+            <p className="text-[10px] text-muted-foreground">Add HTTP_PROXY / HTTPS_PROXY for firewalled networks</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              const template = presetFallbacks.corporate;
+              if (!template?.content) return;
+              try {
+                await invoke("install_setting_template", { config: template.content });
+                const updated = await invoke<ClaudeSettings>("get_settings");
+                setSettings(updated);
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          >
+            Apply
           </Button>
         </div>
 
@@ -4109,14 +4160,30 @@ function SettingsView({
               const isTestError = testState === "error";
               const missingKeys = testMissingKeys[preset.key] || [];
               const missingValues = testMissingValues[preset.key] || {};
+              const isActive = activeProvider === preset.key;
               return (
                 <div
                   key={preset.key}
-                  className={`rounded-lg border p-3 flex flex-col gap-2 w-full overflow-hidden ${isTestSuccess ? "border-primary/60 bg-primary/5" : isTestError ? "border-destructive/60 bg-destructive/5" : "border-border bg-card-alt"}`}
+                  className={`rounded-lg border-2 p-3 flex flex-col gap-2 w-full overflow-hidden ${
+                    isActive
+                      ? "border-primary bg-primary/10"
+                      : isTestSuccess
+                        ? "border-primary/60 bg-primary/5"
+                        : isTestError
+                          ? "border-destructive/60 bg-destructive/5"
+                          : "border-border bg-card-alt"
+                  }`}
                 >
                   <div className="flex w-full flex-nowrap items-start gap-3 overflow-hidden">
                     <div className="min-w-0 flex-1 overflow-hidden">
-                      <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
+                        {isActive && (
+                          <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary text-primary-foreground">
+                            Active
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1 truncate">{preset.description}</p>
                     </div>
                     <ResponsiveActions

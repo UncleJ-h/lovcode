@@ -3782,10 +3782,10 @@ fn build_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Menu<
 
     menu_builder = menu_builder.separator();
 
-    let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window").build(app)?;
-    let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window").build(app)?;
+    let toggle_main = MenuItemBuilder::with_id("tray_toggle_main", "Toggle Main Window").build(app)?;
+    let toggle_float = MenuItemBuilder::with_id("tray_toggle_float", "Toggle Float Window").build(app)?;
 
-    menu_builder.item(&show_main).item(&show_float).build()
+    menu_builder.item(&toggle_main).item(&toggle_float).build()
 }
 
 // Truncate string for menu display
@@ -3840,8 +3840,9 @@ fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &st
             }
         }
 
-        // Emit update event
-        let _ = app.emit("review-queue-update", ());
+        // Emit update event with current queue
+        let current_queue: Vec<ReviewItem> = REVIEW_QUEUE.lock().unwrap().clone();
+        let _ = app.emit("review-queue-update", current_queue);
 
         // Update tray menu
         update_tray_menu(app);
@@ -3982,16 +3983,16 @@ pub fn run() {
                 .item(&PredefinedMenuItem::select_all(app, None)?)
                 .build()?;
 
-            let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window")
+            let toggle_main = MenuItemBuilder::with_id("toggle_main", "Toggle Main Window")
                 .accelerator("CmdOrCtrl+1")
                 .build(app)?;
-            let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window")
+            let toggle_float = MenuItemBuilder::with_id("toggle_float", "Toggle Float Window")
                 .accelerator("CmdOrCtrl+2")
                 .build(app)?;
 
             let window_menu = SubmenuBuilder::new(app, "Window")
-                .item(&show_main)
-                .item(&show_float)
+                .item(&toggle_main)
+                .item(&toggle_float)
                 .separator()
                 .item(&PredefinedMenuItem::minimize(app, None)?)
                 .item(&PredefinedMenuItem::maximize(app, None)?)
@@ -4018,20 +4019,50 @@ pub fn run() {
                 .tooltip("Lovcode Messages")
                 .title(initial_count.to_string())
                 .on_menu_event(|app, event| {
+                    use tauri::WebviewWindowBuilder;
+                    use tauri::WebviewUrl;
+
                     let id = event.id.as_ref();
                     if id.starts_with("msg:") {
                         // Extract message ID and consume it
                         let msg_id = &id[4..];
                         consume_review_item(app, msg_id);
-                    } else if id == "show_main" {
+                    } else if id == "tray_toggle_main" {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            let visible = window.is_visible().unwrap_or(false);
+                            let focused = window.is_focused().unwrap_or(false);
+                            if visible && focused {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
-                    } else if id == "show_float" {
+                    } else if id == "tray_toggle_float" {
                         if let Some(window) = app.get_webview_window("float") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            // Float window is always on top, just toggle visibility
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                            }
+                        } else {
+                            // Recreate float window
+                            if let Ok(window) = WebviewWindowBuilder::new(app, "float", WebviewUrl::App("/float.html".into()))
+                                .title("")
+                                .inner_size(121.0, 48.0)
+                                .position(100.0, 100.0)
+                                .decorations(false)
+                                .transparent(true)
+                                .always_on_top(true)
+                                .skip_taskbar(true)
+                                .resizable(false)
+                                .visible(true)
+                                .focused(false)
+                                .build()
+                            {
+                                let _ = window.show();
+                            }
                         }
                     }
                 })
@@ -4049,10 +4080,16 @@ pub fn run() {
                         let _ = window.emit("menu-settings", ());
                     }
                 }
-                "show_main" => {
+                "toggle_main" => {
                     if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                        let visible = window.is_visible().unwrap_or(false);
+                        let focused = window.is_focused().unwrap_or(false);
+                        if visible && focused {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     } else {
                         // Recreate main window
                         #[cfg(target_os = "macos")]
@@ -4068,10 +4105,14 @@ pub fn run() {
                         let _ = builder.build();
                     }
                 }
-                "show_float" => {
+                "toggle_float" => {
                     if let Some(window) = app.get_webview_window("float") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                        // Float window is always on top, just toggle visibility
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                        }
                     } else {
                         // Recreate float window
                         if let Ok(window) = WebviewWindowBuilder::new(app, "float", WebviewUrl::App("/float.html".into()))
