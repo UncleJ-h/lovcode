@@ -336,6 +336,16 @@ struct RawMessage {
     content: Option<serde_json::Value>,
 }
 
+/// Entry from history.jsonl - used as fast session index
+#[derive(Debug, Deserialize)]
+struct HistoryEntry {
+    display: Option<String>,
+    timestamp: Option<u64>,
+    project: Option<String>,
+    #[serde(rename = "sessionId")]
+    session_id: Option<String>,
+}
+
 // ============================================================================
 // Commands & Settings Types
 // ============================================================================
@@ -432,6 +442,12 @@ fn save_disabled_env(disabled: &serde_json::Map<String, Value>) -> Result<(), St
 /// Get path to ~/.claude.json (MCP servers config)
 fn get_claude_json_path() -> PathBuf {
     dirs::home_dir().unwrap().join(".claude.json")
+}
+
+/// Encode project path to project ID (inverse of decode_project_path).
+/// Claude Code encodes: `/.` -> `--`, then `/` -> `-`
+fn encode_project_path(path: &str) -> String {
+    path.replace("/.", "--").replace("/", "-")
 }
 
 /// Decode project ID to actual filesystem path.
@@ -573,23 +589,9 @@ async fn list_sessions(project_id: String) -> Result<Vec<Session>, String> {
 
             if name.ends_with(".jsonl") && !name.starts_with("agent-") {
                 let session_id = name.trim_end_matches(".jsonl").to_string();
-                let content = fs::read_to_string(&path).unwrap_or_default();
 
-                let mut summary = None;
-                let mut message_count = 0;
-
-                for line in content.lines() {
-                    if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
-                        if parsed.line_type.as_deref() == Some("summary") {
-                            summary = parsed.summary;
-                        }
-                        if parsed.line_type.as_deref() == Some("user")
-                            || parsed.line_type.as_deref() == Some("assistant")
-                        {
-                            message_count += 1;
-                        }
-                    }
-                }
+                // Only read head for summary (much faster)
+                let (summary, message_count) = read_session_head(&path, 20);
 
                 let metadata = fs::metadata(&path).ok();
                 let last_modified = metadata
@@ -616,6 +618,79 @@ async fn list_sessions(project_id: String) -> Result<Vec<Session>, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Read only the first N lines of a session file to get summary (much faster than reading entire file)
+fn read_session_head(path: &Path, max_lines: usize) -> (Option<String>, usize) {
+    use std::io::{BufRead, BufReader};
+
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (None, 0),
+    };
+
+    let reader = BufReader::new(file);
+    let mut summary = None;
+    let mut message_count = 0;
+
+    for line in reader.lines().take(max_lines) {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if let Ok(parsed) = serde_json::from_str::<RawLine>(&line) {
+            if parsed.line_type.as_deref() == Some("summary") {
+                summary = parsed.summary;
+            }
+            if parsed.line_type.as_deref() == Some("user")
+                || parsed.line_type.as_deref() == Some("assistant")
+            {
+                message_count += 1;
+            }
+        }
+    }
+
+    (summary, message_count)
+}
+
+/// Build session index from history.jsonl (fast: only reads one file)
+fn build_session_index_from_history() -> HashMap<(String, String), (u64, Option<String>)> {
+    use std::io::{BufRead, BufReader};
+
+    let history_path = get_claude_dir().join("history.jsonl");
+    let mut index: HashMap<(String, String), (u64, Option<String>)> = HashMap::new();
+
+    let file = match fs::File::open(&history_path) {
+        Ok(f) => f,
+        Err(_) => return index,
+    };
+
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        if let Ok(entry) = serde_json::from_str::<HistoryEntry>(&line) {
+            if let (Some(session_id), Some(project), Some(timestamp)) =
+                (entry.session_id, entry.project, entry.timestamp)
+            {
+                let project_id = encode_project_path(&project);
+                // Keep the latest timestamp and display for each session
+                index
+                    .entry((project_id, session_id))
+                    .and_modify(|(ts, disp)| {
+                        if timestamp > *ts {
+                            *ts = timestamp;
+                            *disp = entry.display.clone();
+                        }
+                    })
+                    .or_insert((timestamp, entry.display));
+            }
+        }
+    }
+
+    index
+}
+
 #[tauri::command]
 async fn list_all_sessions() -> Result<Vec<Session>, String> {
     tauri::async_runtime::spawn_blocking(|| {
@@ -625,12 +700,54 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
             return Ok(vec![]);
         }
 
+        // Build index from history.jsonl first (fast)
+        let history_index = build_session_index_from_history();
+
         let mut all_sessions = Vec::new();
+        let mut seen_sessions: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
 
-        for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
-            let project_entry = project_entry.map_err(|e| e.to_string())?;
+        // First pass: use history index for sessions with sessionId
+        for ((project_id, session_id), (timestamp, display)) in &history_index {
+            let session_path = projects_dir
+                .join(project_id)
+                .join(format!("{}.jsonl", session_id));
+
+            if !session_path.exists() {
+                continue;
+            }
+
+            seen_sessions.insert((project_id.clone(), session_id.clone()));
+
+            // Only read head for summary (first 20 lines should be enough)
+            let (summary, head_msg_count) = read_session_head(&session_path, 20);
+
+            // Use display as fallback summary
+            let final_summary = summary.or_else(|| display.clone());
+
+            // Use file mtime for accurate last_modified
+            let metadata = fs::metadata(&session_path).ok();
+            let last_modified = metadata
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(*timestamp / 1000); // fallback to history timestamp
+
+            let display_path = decode_project_path(project_id);
+
+            all_sessions.push(Session {
+                id: session_id.clone(),
+                project_id: project_id.clone(),
+                project_path: Some(display_path),
+                summary: final_summary,
+                message_count: head_msg_count, // approximate from head
+                last_modified,
+            });
+        }
+
+        // Second pass: scan for sessions not in history (older sessions without sessionId)
+        for project_entry in fs::read_dir(&projects_dir).into_iter().flatten().flatten() {
             let project_path = project_entry.path();
-
             if !project_path.is_dir() {
                 continue;
             }
@@ -642,30 +759,20 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
                 .to_string();
             let display_path = decode_project_path(&project_id);
 
-            for entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
+            for entry in fs::read_dir(&project_path).into_iter().flatten().flatten() {
                 let path = entry.path();
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
 
                 if name.ends_with(".jsonl") && !name.starts_with("agent-") {
                     let session_id = name.trim_end_matches(".jsonl").to_string();
-                    let content = fs::read_to_string(&path).unwrap_or_default();
 
-                    let mut summary = None;
-                    let mut message_count = 0;
-
-                    for line in content.lines() {
-                        if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
-                            if parsed.line_type.as_deref() == Some("summary") {
-                                summary = parsed.summary;
-                            }
-                            if parsed.line_type.as_deref() == Some("user")
-                                || parsed.line_type.as_deref() == Some("assistant")
-                            {
-                                message_count += 1;
-                            }
-                        }
+                    // Skip if already processed from history
+                    if seen_sessions.contains(&(project_id.clone(), session_id.clone())) {
+                        continue;
                     }
+
+                    // Read only head for summary
+                    let (summary, head_msg_count) = read_session_head(&path, 20);
 
                     let metadata = fs::metadata(&path).ok();
                     let last_modified = metadata
@@ -679,7 +786,7 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
                         project_id: project_id.clone(),
                         project_path: Some(display_path.clone()),
                         summary,
-                        message_count,
+                        message_count: head_msg_count,
                         last_modified,
                     });
                 }
