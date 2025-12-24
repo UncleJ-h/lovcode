@@ -5,7 +5,6 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-  ContextMenuSeparator,
 } from "../../components/ui/context-menu";
 import type { Feature, FeatureStatus } from "./types";
 
@@ -14,7 +13,7 @@ interface FeatureTabsProps {
   activeFeatureId?: string;
   onSelectFeature: (id: string) => void;
   onAddFeature: () => void;
-  onRemoveFeature: (id: string) => void;
+  onArchiveFeature: (id: string) => void;
   onUpdateFeatureStatus: (id: string, status: FeatureStatus) => void;
   isAddingFeature?: boolean;
   newFeatureName?: string;
@@ -35,7 +34,7 @@ export function FeatureTabs({
   activeFeatureId,
   onSelectFeature,
   onAddFeature,
-  onRemoveFeature,
+  onArchiveFeature,
   onUpdateFeatureStatus,
   isAddingFeature,
   newFeatureName,
@@ -43,9 +42,10 @@ export function FeatureTabs({
   onConfirmAddFeature,
   onCancelAddFeature,
 }: FeatureTabsProps) {
+  const activeFeatures = features.filter((f) => !f.archived);
   return (
     <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-card overflow-x-auto">
-      {features.map((feature) => {
+      {activeFeatures.map((feature) => {
         const isActive = feature.id === activeFeatureId;
         return (
           <ContextMenu key={feature.id}>
@@ -63,10 +63,10 @@ export function FeatureTabs({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRemoveFeature(feature.id);
+                    onArchiveFeature(feature.id);
                   }}
-                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-card-alt transition-all"
-                  title="Remove feature"
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-muted-foreground hover:bg-card-alt transition-all"
+                  title="Archive feature"
                 >
                   <Cross2Icon className="w-3 h-3" />
                 </button>
@@ -83,14 +83,6 @@ export function FeatureTabs({
                   <span>{option.label}</span>
                 </ContextMenuItem>
               ))}
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                onClick={() => onRemoveFeature(feature.id)}
-                className="gap-2 cursor-pointer text-red-500 focus:text-red-500"
-              >
-                <Cross2Icon className="w-3.5 h-3.5" />
-                <span>Remove</span>
-              </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
         );

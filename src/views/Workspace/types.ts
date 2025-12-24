@@ -16,6 +16,7 @@ export interface Feature {
   id: string;
   name: string;
   status: FeatureStatus;
+  archived?: boolean;
   git_branch?: string;
   chat_session_id?: string;
   panels: PanelState[];
@@ -28,6 +29,7 @@ export interface WorkspaceProject {
   id: string;
   name: string;
   path: string;
+  archived?: boolean;
   features: Feature[];
   shared_panels: PanelState[];
   active_feature_id?: string;

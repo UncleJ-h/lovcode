@@ -122,29 +122,25 @@ export function TerminalPane({
     // Track cleanup state - use object to avoid closure stale value
     const mountState = { isMounted: true };
 
-    // IME workaround for WKWebView (macOS)
-    // Problem: WKWebView may fire 'input' BEFORE 'compositionend', causing xterm.js to drop the input
-    // Solution: Track composition data and send it if xterm.js didn't handle it
+    // Fix: Handle CJK input directly via textarea input event
+    // xterm.js has issues with CJK punctuation - it doesn't clear textarea properly
     const textarea = term.textarea;
-    let pendingCompositionData = "";
-
-    const handleCompositionEnd = (e: CompositionEvent) => {
-      if (!e.data) return;
-      pendingCompositionData = e.data;
-      // Use microtask to check after xterm.js processes the input event
-      queueMicrotask(() => {
-        if (pendingCompositionData) {
-          // xterm.js didn't send this data, we need to send it manually
-          const encoder = new TextEncoder();
-          const bytes = Array.from(encoder.encode(pendingCompositionData));
-          invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
-          pendingCompositionData = "";
-        }
-      });
-    };
+    let inputHandled = false;
 
     if (textarea) {
-      textarea.addEventListener("compositionend", handleCompositionEnd as EventListener);
+      textarea.addEventListener("input", () => {
+        const value = textarea.value;
+        if (value) {
+          console.log("[DEBUG][input] Sending via input event:", JSON.stringify(value));
+          const encoder = new TextEncoder();
+          const bytes = Array.from(encoder.encode(value));
+          invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
+          textarea.value = "";
+          inputHandled = true;
+          // Reset flag after microtask so onData can check it
+          queueMicrotask(() => { inputHandled = false; });
+        }
+      });
     }
 
     // Initialize PTY session (create if not exists, reuse if exists)
@@ -196,12 +192,13 @@ export function TerminalPane({
       }
     };
 
-    // Handle user input
+    // Handle user input - skip if already handled by input event
     const onDataDisposable = term.onData((data) => {
-      // If this data matches pending composition, clear it (xterm.js handled it)
-      if (pendingCompositionData && data === pendingCompositionData) {
-        pendingCompositionData = "";
+      if (inputHandled) {
+        console.log("[DEBUG][onData] Skipping, already handled by input event:", JSON.stringify(data));
+        return;
       }
+      console.log("[DEBUG][onData] Sending:", JSON.stringify(data));
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
@@ -237,11 +234,6 @@ export function TerminalPane({
       mountState.isMounted = false;
       onDataDisposable.dispose();
       onTitleDisposable.dispose();
-
-      // Remove IME event listeners
-      if (textarea) {
-        textarea.removeEventListener("compositionend", handleCompositionEnd as EventListener);
-      }
 
       // Unlisten events
       unlistenData.then((fn) => fn());

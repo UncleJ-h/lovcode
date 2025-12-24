@@ -120,40 +120,40 @@ export function WorkspaceView() {
     }
   }, [workspace, saveWorkspace]);
 
-  // Remove project handler
-  const handleRemoveProject = useCallback(
-    async (id: string) => {
-      // Kill all PTY sessions for this project
-      const projectToRemove = workspace?.projects.find((p) => p.id === id);
-      if (projectToRemove) {
-        // Kill shared panels
-        for (const panel of projectToRemove.shared_panels) {
-          invoke("pty_kill", { id: panel.pty_id }).catch(console.error);
-        }
-        // Kill feature panels
-        for (const feature of projectToRemove.features) {
-          for (const panel of feature.panels) {
-            invoke("pty_kill", { id: panel.pty_id }).catch(console.error);
-          }
-        }
-      }
+  // Archive project handler (hide but keep data)
+  const handleArchiveProject = useCallback(
+    (id: string) => {
+      if (!workspace) return;
 
-      try {
-        await invoke("workspace_remove_project", { id });
-        if (workspace) {
-          const newProjects = workspace.projects.filter((p) => p.id !== id);
-          saveWorkspace({
-            ...workspace,
-            projects: newProjects,
-            active_project_id:
-              workspace.active_project_id === id
-                ? newProjects[0]?.id
-                : workspace.active_project_id,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to remove project:", err);
-      }
+      const nonArchivedProjects = workspace.projects.filter((p) => p.id !== id && !p.archived);
+      const newProjects = workspace.projects.map((p) =>
+        p.id === id ? { ...p, archived: true } : p
+      );
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+        active_project_id:
+          workspace.active_project_id === id
+            ? nonArchivedProjects[0]?.id
+            : workspace.active_project_id,
+      });
+    },
+    [workspace, saveWorkspace]
+  );
+
+  // Unarchive project handler
+  const handleUnarchiveProject = useCallback(
+    (id: string) => {
+      if (!workspace) return;
+
+      const newProjects = workspace.projects.map((p) =>
+        p.id === id ? { ...p, archived: false } : p
+      );
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+        active_project_id: id,
+      });
     },
     [workspace, saveWorkspace]
   );
@@ -216,50 +216,6 @@ export function WorkspaceView() {
     setNewFeatureName("");
   }, []);
 
-  // Remove feature handler
-  const handleRemoveFeature = useCallback(
-    async (featureId: string) => {
-      if (!activeProject) return;
-
-      // Kill all PTY sessions for this feature's panels
-      const featureToRemove = activeProject.features.find((f) => f.id === featureId);
-      if (featureToRemove) {
-        for (const panel of featureToRemove.panels) {
-          invoke("pty_kill", { id: panel.pty_id }).catch(console.error);
-        }
-      }
-
-      try {
-        await invoke("workspace_delete_feature", {
-          projectId: activeProject.id,
-          featureId,
-        });
-
-        if (workspace) {
-          const newProjects = workspace.projects.map((p) => {
-            if (p.id !== activeProject.id) return p;
-            const newFeatures = p.features.filter((f) => f.id !== featureId);
-            return {
-              ...p,
-              features: newFeatures,
-              active_feature_id:
-                p.active_feature_id === featureId
-                  ? newFeatures[0]?.id
-                  : p.active_feature_id,
-            };
-          });
-          saveWorkspace({
-            ...workspace,
-            projects: newProjects,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to delete feature:", err);
-      }
-    },
-    [activeProject, workspace, saveWorkspace]
-  );
-
   // Select feature handler
   const handleSelectFeature = useCallback(
     (featureId: string) => {
@@ -298,6 +254,58 @@ export function WorkspaceView() {
       });
     },
     [activeProject, workspace, saveWorkspace]
+  );
+
+  // Archive feature handler (hide from tabs but keep data)
+  const handleArchiveFeature = useCallback(
+    (featureId: string) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        const nonArchivedFeatures = p.features.filter((f) => f.id !== featureId && !f.archived);
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, archived: true } : f
+          ),
+          // Switch to next non-archived feature if archiving current
+          active_feature_id:
+            p.active_feature_id === featureId
+              ? nonArchivedFeatures[0]?.id
+              : p.active_feature_id,
+        };
+      });
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Unarchive feature handler (restore to tabs)
+  const handleUnarchiveFeature = useCallback(
+    (projectId: string, featureId: string) => {
+      if (!workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, archived: false } : f
+          ),
+          active_feature_id: featureId,
+        };
+      });
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+        active_project_id: projectId,
+      });
+    },
+    [workspace, saveWorkspace]
   );
 
   // Add panel handler
@@ -565,7 +573,9 @@ export function WorkspaceView() {
           activeProjectId={workspace?.active_project_id}
           onSelectProject={handleSelectProject}
           onAddProject={handleAddProject}
-          onRemoveProject={handleRemoveProject}
+          onArchiveProject={handleArchiveProject}
+          onUnarchiveProject={handleUnarchiveProject}
+          onUnarchiveFeature={handleUnarchiveFeature}
         />
 
         {/* Main content area */}
@@ -578,7 +588,7 @@ export function WorkspaceView() {
                 activeFeatureId={activeProject.active_feature_id}
                 onSelectFeature={handleSelectFeature}
                 onAddFeature={handleStartAddFeature}
-                onRemoveFeature={handleRemoveFeature}
+                onArchiveFeature={handleArchiveFeature}
                 onUpdateFeatureStatus={handleUpdateFeatureStatus}
                 isAddingFeature={isAddingFeature}
                 newFeatureName={newFeatureName}
