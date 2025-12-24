@@ -3724,6 +3724,182 @@ async fn test_zenmux_connection(
 }
 
 // ============================================================================
+// Claude Code Version Management
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+struct VersionWithDownloads {
+    version: String,
+    downloads: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaudeCodeVersionInfo {
+    current_version: Option<String>,
+    available_versions: Vec<VersionWithDownloads>,
+    autoupdater_disabled: bool,
+}
+
+#[tauri::command]
+async fn get_claude_code_version_info() -> Result<ClaudeCodeVersionInfo, String> {
+    // Get current installed version (blocking)
+    let current_version = tauri::async_runtime::spawn_blocking(|| {
+        std::process::Command::new("npm")
+            .args(["list", "-g", "@anthropic-ai/claude-code", "--depth=0", "--json"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+                    json.get("dependencies")?
+                        .get("@anthropic-ai/claude-code")?
+                        .get("version")?
+                        .as_str()
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Get available versions (blocking)
+    let versions: Vec<String> = tauri::async_runtime::spawn_blocking(|| {
+        std::process::Command::new("npm")
+            .args(["view", "@anthropic-ai/claude-code", "versions", "--json"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    let versions: Vec<String> = serde_json::from_slice(&output.stdout).ok()?;
+                    Some(versions.into_iter().rev().take(20).collect())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Fetch download counts from npm API
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+    let downloads_map: std::collections::HashMap<String, u64> = match client
+        .get("https://api.npmjs.org/versions/@anthropic-ai%2Fclaude-code/last-week")
+        .send()
+        .await
+    {
+        Ok(resp) => resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|json| {
+                json.get("downloads")?.as_object().map(|obj| {
+                    obj.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_u64()?)))
+                        .collect()
+                })
+            })
+            .unwrap_or_default(),
+        Err(_) => std::collections::HashMap::new(),
+    };
+
+    // Combine versions with download counts
+    let available_versions: Vec<VersionWithDownloads> = versions
+        .into_iter()
+        .map(|v| {
+            let downloads = downloads_map.get(&v).copied().unwrap_or(0);
+            VersionWithDownloads { version: v, downloads }
+        })
+        .collect();
+
+    // Check autoupdater setting
+    let settings_path = get_claude_dir().join("settings.json");
+    let autoupdater_disabled = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|content| {
+            let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+            json.get("env")?
+                .get("DISABLE_AUTOUPDATER")?
+                .as_str()
+                .map(|s| s == "true" || s == "1")
+        })
+        .unwrap_or(false);
+
+    Ok(ClaudeCodeVersionInfo {
+        current_version,
+        available_versions,
+        autoupdater_disabled,
+    })
+}
+
+#[tauri::command]
+async fn install_claude_code_version(version: String) -> Result<String, String> {
+    let is_specific_version = version != "latest";
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let package = if version == "latest" {
+            "@anthropic-ai/claude-code@latest".to_string()
+        } else {
+            format!("@anthropic-ai/claude-code@{}", version)
+        };
+
+        let output = std::process::Command::new("npm")
+            .args(["install", "-g", &package])
+            .output()
+            .map_err(|e| format!("Failed to run npm: {}", e))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Auto-disable autoupdater when installing a specific version
+    if is_specific_version {
+        let _ = set_claude_code_autoupdater(true); // true = disabled
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+fn set_claude_code_autoupdater(disabled: bool) -> Result<(), String> {
+    let settings_path = get_claude_dir().join("settings.json");
+
+    // Read existing settings or create empty object
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // Ensure env object exists
+    if !settings.get("env").is_some() {
+        settings["env"] = serde_json::json!({});
+    }
+
+    // Set DISABLE_AUTOUPDATER
+    settings["env"]["DISABLE_AUTOUPDATER"] = serde_json::Value::String(
+        if disabled { "true".to_string() } else { "false".to_string() }
+    );
+
+    // Write back
+    let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// ============================================================================
 // macOS Window Configuration
 // ============================================================================
 
@@ -3967,7 +4143,10 @@ pub fn run() {
             set_distill_watch_enabled,
             list_reference_sources,
             list_reference_docs,
-            get_reference_doc
+            get_reference_doc,
+            get_claude_code_version_info,
+            install_claude_code_version,
+            set_claude_code_autoupdater
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

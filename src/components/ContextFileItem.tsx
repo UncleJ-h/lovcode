@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent, useCollapsible } f
 // Radix icons
 import { ExternalLinkIcon, CopyIcon, CheckIcon } from "@radix-ui/react-icons";
 import { useState, ReactNode } from "react";
-import { useAppConfig } from "../App";
+import { useAppConfig } from "../context";
 
 function ChevronIcon() {
   const { open } = useCollapsible();

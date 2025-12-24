@@ -1,0 +1,951 @@
+import { useState, useEffect, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { FlaskConical } from "lucide-react";
+import {
+  GearIcon,
+  CheckIcon,
+  Cross1Icon,
+  Cross2Icon,
+  Pencil1Icon,
+  EyeOpenIcon,
+  EyeClosedIcon,
+  PlusCircledIcon,
+  MinusCircledIcon,
+  TrashIcon,
+  RocketIcon,
+} from "@radix-ui/react-icons";
+import { Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
+import {
+  LoadingState,
+  EmptyState,
+  SearchInput,
+  PageHeader,
+  ConfigPage,
+  MarketplaceSection,
+  type MarketplaceItem,
+} from "../../components/config";
+import { BrowseMarketplaceButton, CollapsibleCard } from "../../components/shared";
+import { ContextFileItem, ConfigFileItem } from "../../components/ContextFileItem";
+import { usePersistedState } from "../../hooks";
+import type { ClaudeSettings, ContextFile } from "../../types";
+import { ClaudeCodeVersionSection } from "./ClaudeCodeVersionSection";
+
+interface SettingsViewProps {
+  marketplaceItems: MarketplaceItem[];
+  onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
+}
+
+export function SettingsView({
+  marketplaceItems,
+  onMarketplaceSelect,
+  onBrowseMore,
+}: SettingsViewProps) {
+  const ResponsiveActions = ({
+    variant,
+    icon,
+    text,
+    className = "",
+  }: {
+    variant: "env" | "router";
+    icon: ReactNode;
+    text: ReactNode;
+    className?: string;
+  }) => (
+    <div className={`flex flex-nowrap items-center gap-2 whitespace-nowrap justify-end ${className}`}>
+      <div className={`${variant}-actions--icon flex flex-nowrap items-center gap-2`}>{icon}</div>
+      <div className={`${variant}-actions--text flex flex-nowrap items-center gap-2`}>{text}</div>
+    </div>
+  );
+
+  const [settings, setSettings] = useState<ClaudeSettings | null>(null);
+  const [contextFiles, setContextFiles] = useState<ContextFile[]>([]);
+  const [settingsPath, setSettingsPath] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [applyStatus, setApplyStatus] = useState<Record<string, "idle" | "loading" | "success" | "error">>({});
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyHint, setApplyHint] = useState<Record<string, string>>({});
+  const [testStatus, setTestStatus] = usePersistedState<Record<string, "idle" | "loading" | "success" | "error">>(
+    "lovcode:settings:routerTestStatus",
+    {}
+  );
+  const [testMessage, setTestMessage] = usePersistedState<Record<string, string>>(
+    "lovcode:settings:routerTestMessage",
+    {}
+  );
+  const [testMissingKeys, setTestMissingKeys] = useState<Record<string, string[]>>({});
+  const [testMissingValues, setTestMissingValues] = useState<Record<string, Record<string, string>>>({});
+  const [editingEnvKey, setEditingEnvKey] = useState<string | null>(null);
+  const [envEditValue, setEnvEditValue] = useState("");
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvValue, setNewEnvValue] = useState("");
+  const [revealedEnvKeys, setRevealedEnvKeys] = useState<Record<string, boolean>>({});
+  const [editingEnvIsDisabled, setEditingEnvIsDisabled] = useState(false);
+  const [expandedPresetKey, setExpandedPresetKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      invoke<ClaudeSettings>("get_settings"),
+      invoke<ContextFile[]>("get_context_files"),
+      invoke<string>("get_settings_path"),
+    ])
+      .then(([s, c, p]) => {
+        setSettings(s);
+        setContextFiles(c.filter((f) => f.scope === "global"));
+        setSettingsPath(p);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Loading settings..." />;
+
+  const hasContent = settings?.raw || contextFiles.length > 0;
+
+  const filteredContextFiles = contextFiles.filter((f) =>
+    f.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const settingsMatchSearch =
+    !search || JSON.stringify(settings?.raw || {}).toLowerCase().includes(search.toLowerCase());
+
+  const getActiveProvider = (value: ClaudeSettings | null): string | null => {
+    const lovcode =
+      value?.raw && typeof value.raw === "object"
+        ? (value.raw as Record<string, unknown>).lovcode
+        : null;
+    if (!lovcode || typeof lovcode !== "object") return null;
+    const activeProvider = (lovcode as Record<string, unknown>).activeProvider;
+    return typeof activeProvider === "string" ? activeProvider : null;
+  };
+
+  const activeProvider = getActiveProvider(settings);
+
+  const getRawEnvFromSettings = (value: ClaudeSettings | null) => {
+    const envValue =
+      value?.raw && typeof value.raw === "object"
+        ? (value.raw as Record<string, unknown>).env
+        : null;
+    if (!envValue || typeof envValue !== "object" || Array.isArray(envValue)) return {};
+    return Object.fromEntries(
+      Object.entries(envValue as Record<string, unknown>).map(([key, v]) => [key, String(v ?? "")])
+    );
+  };
+
+  const getCustomEnvKeysFromSettings = (value: ClaudeSettings | null): string[] => {
+    const keys =
+      value?.raw && typeof value.raw === "object"
+        ? (value.raw as Record<string, unknown>)._lovcode_custom_env_keys
+        : null;
+    if (!keys || !Array.isArray(keys)) return [];
+    return keys.filter((k): k is string => typeof k === "string");
+  };
+
+  const getDisabledEnvFromSettings = (value: ClaudeSettings | null): Record<string, string> => {
+    const disabled =
+      value?.raw && typeof value.raw === "object"
+        ? (value.raw as Record<string, unknown>)._lovcode_disabled_env
+        : null;
+    if (!disabled || typeof disabled !== "object" || Array.isArray(disabled)) return {};
+    return Object.fromEntries(
+      Object.entries(disabled as Record<string, unknown>).map(([key, v]) => [key, String(v ?? "")])
+    );
+  };
+
+  const rawEnv = getRawEnvFromSettings(settings);
+  const customEnvKeys = getCustomEnvKeysFromSettings(settings);
+  const disabledEnv = getDisabledEnvFromSettings(settings);
+
+  const allEnvEntries: Array<[string, string, boolean]> = [
+    ...Object.entries(rawEnv).map(([k, v]) => [k, v, false] as [string, string, boolean]),
+    ...Object.entries(disabledEnv).map(([k, v]) => [k, v, true] as [string, string, boolean]),
+  ].sort((a, b) => a[0].localeCompare(b[0]));
+
+  const filteredEnvEntries = !search
+    ? allEnvEntries
+    : allEnvEntries.filter(([key]) => key.toLowerCase().includes(search.toLowerCase()));
+
+  const proxyPresets = [
+    {
+      key: "anthropic-subscription",
+      label: "Anthropic Subscription",
+      description: "Use Claude Pro/Max subscription via OAuth login",
+      templateName: "anthropic-subscription",
+    },
+    {
+      key: "native",
+      label: "Anthropic API",
+      description: "Direct Anthropic API with your API key",
+      templateName: "anthropic-native-endpoint",
+    },
+    {
+      key: "zenmux",
+      label: "ZenMux",
+      description: "Route via ZenMux to unlock more model options",
+      templateName: "zenmux-anthropic-proxy",
+    },
+    {
+      key: "qiniu",
+      label: "Qiniu Cloud",
+      description: "Use Qiniu Cloud AI gateway for Anthropic API",
+      templateName: "qiniu-anthropic-proxy",
+    },
+  ];
+
+  const presetFallbacks: Record<string, MarketplaceItem> = {
+    corporate: {
+      name: "corporate-proxy",
+      path: "fallback/corporate-proxy.json",
+      description: "Add HTTP_PROXY / HTTPS_PROXY for firewalled networks.",
+      downloads: null,
+      content: JSON.stringify({ env: { HTTP_PROXY: "http://proxy.example.com:8080", HTTPS_PROXY: "http://proxy.example.com:8080" } }, null, 2),
+    },
+    "anthropic-subscription": {
+      name: "anthropic-subscription",
+      path: "fallback/anthropic-subscription.json",
+      description: "Use Claude Pro/Max subscription via OAuth login.",
+      downloads: null,
+      content: JSON.stringify({ env: { CLAUDE_CODE_USE_OAUTH: "1" } }, null, 2),
+    },
+    native: {
+      name: "anthropic-native-endpoint",
+      path: "fallback/anthropic-native-endpoint.json",
+      description: "Direct Anthropic API with your API key.",
+      downloads: null,
+      content: JSON.stringify({ env: { ANTHROPIC_API_KEY: "your_anthropic_api_key_here" } }, null, 2),
+    },
+    zenmux: {
+      name: "zenmux-anthropic-proxy",
+      path: "fallback/zenmux-anthropic-proxy.json",
+      description: "Route via ZenMux to unlock more model options.",
+      downloads: null,
+      content: JSON.stringify({ env: { ZENMUX_API_KEY: "sk-ai-v1-xxxxx" } }, null, 2),
+    },
+    qiniu: {
+      name: "qiniu-anthropic-proxy",
+      path: "fallback/qiniu-anthropic-proxy.json",
+      description: "Use Qiniu Cloud AI gateway for Anthropic API.",
+      downloads: null,
+      content: JSON.stringify({ env: { QINIU_API_KEY: "your_qiniu_api_key_here" } }, null, 2),
+    },
+  };
+
+  const filteredPresets = proxyPresets.filter(
+    (preset) =>
+      preset.label.toLowerCase().includes(search.toLowerCase()) ||
+      preset.description.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const getPresetTemplate = (presetKey: string) => {
+    const preset = proxyPresets.find((p) => p.key === presetKey);
+    if (!preset) return null;
+    const marketplaceTemplate = marketplaceItems.find((item) => item.name === preset.templateName) ?? null;
+    const fallbackTemplate = presetFallbacks[presetKey] ?? null;
+    return { preset, template: marketplaceTemplate ?? fallbackTemplate };
+  };
+
+  const isPlaceholderValue = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return true;
+    return /(xxxxx|<.*?>|your[_\s-]?key|replace[_\s-]?me)/i.test(trimmed);
+  };
+
+  const handleTogglePresetPreview = (presetKey: string) => {
+    setExpandedPresetKey((prev) => (prev === presetKey ? null : presetKey));
+  };
+
+  const getPresetPreviewConfig = (presetKey: string) => {
+    const resolved = getPresetTemplate(presetKey);
+    const settingsRaw =
+      settings?.raw && typeof settings.raw === "object" && !Array.isArray(settings.raw)
+        ? (settings.raw as Record<string, unknown>)
+        : {};
+    const templateContent = resolved?.template?.content;
+    if (!templateContent) {
+      return { settings: settingsRaw, note: "Template not available locally." };
+    }
+
+    try {
+      const parsed = JSON.parse(templateContent) as Record<string, unknown>;
+      const preview: Record<string, unknown> = {};
+      const templateEnv =
+        parsed.env && typeof parsed.env === "object" && !Array.isArray(parsed.env)
+          ? (parsed.env as Record<string, unknown>)
+          : null;
+      if (templateEnv) {
+        const currentEnv =
+          settingsRaw.env && typeof settingsRaw.env === "object" && !Array.isArray(settingsRaw.env)
+            ? (settingsRaw.env as Record<string, unknown>)
+            : {};
+        preview.env = Object.fromEntries(Object.keys(templateEnv).map((key) => [key, currentEnv[key] ?? ""]));
+      }
+      Object.keys(parsed).forEach((key) => {
+        if (key === "env") return;
+        if (key in settingsRaw) preview[key] = settingsRaw[key];
+      });
+      return { settings: preview, note: null };
+    } catch {
+      return { settings: settingsRaw, note: "Template JSON invalid; showing full settings." };
+    }
+  };
+
+  const handleTestPreset = async (presetKey: string, envOverride?: Record<string, string>) => {
+    const resolved = getPresetTemplate(presetKey);
+    if (!resolved?.template?.content) {
+      setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: "Template not available locally." }));
+      setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
+      return;
+    }
+
+    setTestStatus((prev) => ({ ...prev, [presetKey]: "loading" }));
+
+    if (presetKey === "anthropic-subscription") {
+      setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: "Run /login in Claude Code to authenticate" }));
+      setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
+      return;
+    }
+
+    const envSource = envOverride ?? rawEnv;
+
+    try {
+      const parsed = JSON.parse(resolved.template.content) as { env?: Record<string, string> };
+      const requiredKeys = parsed.env ? Object.keys(parsed.env) : [];
+      const missing = requiredKeys.filter((key) => isPlaceholderValue(envSource[key] || ""));
+
+      if (missing.length > 0) {
+        setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+        setTestMessage((prev) => ({ ...prev, [presetKey]: `Missing or placeholder: ${missing.join(", ")}` }));
+        setTestMissingKeys((prev) => ({ ...prev, [presetKey]: missing }));
+        setTestMissingValues((prev) => ({
+          ...prev,
+          [presetKey]: Object.fromEntries(missing.map((key) => [key, envSource[key] || ""])),
+        }));
+        return;
+      }
+
+      setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
+
+      if (presetKey === "zenmux") {
+        const authToken = (envSource.ZENMUX_API_KEY || envSource.ANTHROPIC_AUTH_TOKEN || "").trim();
+        const baseUrl = envSource.ANTHROPIC_BASE_URL || "https://zenmux.ai/api/anthropic";
+        const model = envSource.ANTHROPIC_DEFAULT_SONNET_MODEL || envSource.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4.5";
+
+        try {
+          const result = await invoke<{ ok: boolean; status: number; body: string }>("test_zenmux_connection", {
+            baseUrl,
+            authToken,
+            model,
+          });
+
+          if (!result.ok) {
+            setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+            setTestMessage((prev) => ({
+              ...prev,
+              [presetKey]: `ZenMux test failed (${result.status}): ${result.body || "No response body"}`,
+            }));
+            return;
+          }
+        } catch (e) {
+          setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `ZenMux test error: ${String(e)}` }));
+          return;
+        }
+      }
+
+      setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: "" }));
+    } catch (e) {
+      setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+      setTestMessage((prev) => ({ ...prev, [presetKey]: `Invalid template JSON: ${String(e)}` }));
+      setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
+    }
+  };
+
+  const presetEnvKeyMappings: Record<string, Record<string, string>> = {
+    zenmux: { ZENMUX_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
+    qiniu: { QINIU_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
+  };
+
+  const presetExtraEnv: Record<string, Record<string, string>> = {
+    zenmux: {
+      ANTHROPIC_BASE_URL: "https://zenmux.ai/api/anthropic",
+      ANTHROPIC_API_KEY: "",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    },
+    qiniu: { ANTHROPIC_BASE_URL: "https://api.qnaigc.com" },
+  };
+
+  const handleApplyPreset = async (presetKey: string) => {
+    const resolved = getPresetTemplate(presetKey);
+    if (!resolved?.template || !resolved.template.content) {
+      setApplyError("Preset template not available locally.");
+      setApplyStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+      return;
+    }
+
+    setApplyStatus((prev) => ({ ...prev, [presetKey]: "loading" }));
+    setApplyError(null);
+    setApplyHint((prev) => ({ ...prev, [presetKey]: "" }));
+
+    try {
+      const parsed = JSON.parse(resolved.template.content);
+      const keyMapping = presetEnvKeyMappings[presetKey] || {};
+      const extraEnv = presetExtraEnv[presetKey] || {};
+
+      if (presetKey === "anthropic-subscription") {
+        parsed.env = { CLAUDE_CODE_USE_OAUTH: "1" };
+      } else if (parsed.env) {
+        for (const [fromKey, toKey] of Object.entries(keyMapping)) {
+          if (fromKey in parsed.env) {
+            parsed.env[toKey] = parsed.env[fromKey];
+            delete parsed.env[fromKey];
+          }
+        }
+        Object.assign(parsed.env, extraEnv);
+      }
+
+      parsed.lovcode = { activeProvider: presetKey };
+
+      await invoke("install_setting_template", { config: JSON.stringify(parsed, null, 2) });
+      const updated = await invoke<ClaudeSettings>("get_settings");
+      setSettings(updated);
+      setApplyStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+
+      if (presetKey === "anthropic-subscription") {
+        setApplyHint((prev) => ({
+          ...prev,
+          [presetKey]: "Run /login in Claude Code and select Subscription to complete setup",
+        }));
+      }
+
+      setTimeout(() => {
+        setApplyStatus((prev) => ({ ...prev, [presetKey]: "idle" }));
+      }, 1500);
+    } catch (e) {
+      setApplyStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+      setApplyError(String(e));
+    }
+  };
+
+  const refreshSettings = async () => {
+    const updated = await invoke<ClaudeSettings>("get_settings");
+    setSettings(updated);
+    return updated;
+  };
+
+  const handleEnvEdit = (key: string, value: string, isDisabled = false) => {
+    setEditingEnvKey(key);
+    setEnvEditValue(value);
+    setEditingEnvIsDisabled(isDisabled);
+  };
+
+  const handleEnvSave = async () => {
+    if (!editingEnvKey) return;
+    if (editingEnvIsDisabled) {
+      await invoke("update_disabled_settings_env", { envKey: editingEnvKey, envValue: envEditValue });
+    } else {
+      await invoke("update_settings_env", { envKey: editingEnvKey, envValue: envEditValue });
+    }
+    await refreshSettings();
+    setEditingEnvKey(null);
+    setEditingEnvIsDisabled(false);
+  };
+
+  const handleEnvDelete = async (key: string) => {
+    await invoke("delete_settings_env", { envKey: key });
+    await refreshSettings();
+    if (editingEnvKey === key) setEditingEnvKey(null);
+  };
+
+  const handleEnvDisable = async (key: string) => {
+    await invoke("disable_settings_env", { envKey: key });
+    await refreshSettings();
+    if (editingEnvKey === key) setEditingEnvKey(null);
+  };
+
+  const handleEnvEnable = async (key: string) => {
+    await invoke("enable_settings_env", { envKey: key });
+    await refreshSettings();
+  };
+
+  const handleEnvCreate = async () => {
+    const key = newEnvKey.trim();
+    if (!key) return;
+    await invoke("update_settings_env", { envKey: key, envValue: newEnvValue, isNew: true });
+    await refreshSettings();
+    setNewEnvKey("");
+    setNewEnvValue("");
+  };
+
+  const handleMissingValueChange = (presetKey: string, key: string, value: string) => {
+    setTestMissingValues((prev) => ({
+      ...prev,
+      [presetKey]: { ...(prev[presetKey] || {}), [key]: value },
+    }));
+  };
+
+  const handleSaveMissingAndRetest = async (presetKey: string) => {
+    const missingKeys = testMissingKeys[presetKey] || [];
+    if (missingKeys.length === 0) return;
+    const values = testMissingValues[presetKey] || {};
+    await Promise.all(
+      missingKeys.map((key) => invoke("update_settings_env", { envKey: key, envValue: values[key] ?? "" }))
+    );
+    const updated = await refreshSettings();
+    const updatedEnv = getRawEnvFromSettings(updated);
+    await handleTestPreset(presetKey, updatedEnv);
+  };
+
+  const toggleEnvReveal = (key: string) => {
+    setRevealedEnvKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getMissingEnvPlaceholder = (key: string) => {
+    if (/proxy/i.test(key)) return "http://localhost:7890";
+    return "value";
+  };
+
+  return (
+    <ConfigPage>
+      <PageHeader
+        title="Settings"
+        subtitle="User configuration (~/.claude)"
+        action={<BrowseMarketplaceButton onClick={onBrowseMore} />}
+      />
+      <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
+
+      <CollapsibleCard
+        storageKey="lovcode:settings:envCardOpen"
+        title="Environment Variables"
+        subtitle="Manage env vars in ~/.claude/settings.json"
+        bodyClassName="p-3 space-y-3"
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1"
+            placeholder="ENV_KEY"
+            value={newEnvKey}
+            onChange={(e) => setNewEnvKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleEnvCreate()}
+          />
+          <input
+            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1"
+            placeholder="value"
+            value={newEnvValue}
+            onChange={(e) => setNewEnvValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleEnvCreate()}
+          />
+          <Button size="sm" onClick={handleEnvCreate} disabled={!newEnvKey.trim()}>
+            Add
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 p-2 rounded-lg border border-dashed border-border bg-card-alt">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-ink">Corporate HTTP(S) Proxy</p>
+            <p className="text-[10px] text-muted-foreground">
+              Add HTTP_PROXY / HTTPS_PROXY for firewalled networks
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              const template = presetFallbacks.corporate;
+              if (!template?.content) return;
+              try {
+                await invoke("install_setting_template", { config: template.content });
+                const updated = await invoke<ClaudeSettings>("get_settings");
+                setSettings(updated);
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+
+        {filteredEnvEntries.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-2 font-medium">Key</th>
+                  <th className="py-2 pr-2 font-medium">Value</th>
+                  <th className="py-2 px-2 font-medium text-right env-actions-cell w-[1%] whitespace-nowrap">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEnvEntries.map(([key, value, isDisabled]) => {
+                  const isRevealed = !!revealedEnvKeys[key];
+                  const isCustom = customEnvKeys.includes(key);
+                  return (
+                    <tr
+                      key={key}
+                      className={`border-b border-border/60 last:border-0 ${isDisabled ? "opacity-50" : ""}`}
+                    >
+                      <td className="py-2 pr-2">
+                        <span
+                          className={`text-xs px-2 py-1 rounded font-mono ${isDisabled ? "bg-muted/50 text-muted-foreground line-through" : "bg-primary/10 text-primary"}`}
+                        >
+                          {key}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-2">
+                        {editingEnvKey === key ? (
+                          <input
+                            autoFocus
+                            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink w-64"
+                            value={envEditValue}
+                            onChange={(e) => setEnvEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleEnvSave();
+                              if (e.key === "Escape") setEditingEnvKey(null);
+                            }}
+                          />
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {isRevealed ? value || "(empty)" : "••••••"}
+                            </span>
+                            <button
+                              onClick={() => toggleEnvReveal(key)}
+                              className="text-muted-foreground hover:text-foreground p-0.5"
+                              title={isRevealed ? "Hide" : "View"}
+                            >
+                              {isRevealed ? (
+                                <EyeClosedIcon className="w-3.5 h-3.5" />
+                              ) : (
+                                <EyeOpenIcon className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 whitespace-nowrap text-right env-actions-cell w-[1%]">
+                        {editingEnvKey === key ? (
+                          <ResponsiveActions
+                            variant="env"
+                            icon={
+                              <>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={handleEnvSave} title="Save">
+                                  <CheckIcon />
+                                </Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setEditingEnvKey(null)} title="Cancel">
+                                  <Cross1Icon />
+                                </Button>
+                              </>
+                            }
+                            text={
+                              <>
+                                <Button size="sm" onClick={handleEnvSave}>Save</Button>
+                                <Button size="sm" variant="outline" onClick={() => setEditingEnvKey(null)}>Cancel</Button>
+                              </>
+                            }
+                          />
+                        ) : isDisabled ? (
+                          <ResponsiveActions
+                            variant="env"
+                            icon={
+                              <>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleEnvEdit(key, value, true)} title="Edit">
+                                  <Pencil1Icon />
+                                </Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)} title="Enable">
+                                  <PlusCircledIcon />
+                                </Button>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                          <TrashIcon />
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
+                            }
+                            text={
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => handleEnvEdit(key, value, true)}>Edit</Button>
+                                <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)}>Enable</Button>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>Delete</Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
+                            }
+                          />
+                        ) : (
+                          <ResponsiveActions
+                            variant="env"
+                            icon={
+                              <>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleEnvEdit(key, value, false)} title="Edit">
+                                  <Pencil1Icon />
+                                </Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)} title="Disable">
+                                  <MinusCircledIcon />
+                                </Button>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="icon" variant="outline" className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>
+                                          <TrashIcon />
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
+                            }
+                            text={
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => handleEnvEdit(key, value, false)}>Edit</Button>
+                                <Button size="sm" variant="outline" className="text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => handleEnvDisable(key)}>Disable</Button>
+                                <TooltipProvider delayDuration={1000}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none" onClick={() => handleEnvDelete(key)} disabled={!isCustom}>Delete</Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isCustom && <TooltipContent>Only custom can be deleted</TooltipContent>}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
+                            }
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No env variables configured.</p>
+        )}
+      </CollapsibleCard>
+
+      {filteredPresets.length > 0 && (
+        <CollapsibleCard
+          storageKey="lovcode:settings:llmProviderOpen"
+          title="LLM Provider"
+          subtitle="Switch between Anthropic official or third-party providers"
+          headerRight={applyError && <p className="text-xs text-red-600">{applyError}</p>}
+          bodyClassName="p-3 grid gap-3"
+        >
+          {filteredPresets.map((preset) => {
+            const status = applyStatus[preset.key] || "idle";
+            const isLoading = status === "loading";
+            const isSuccess = status === "success";
+            const testState = testStatus[preset.key] || "idle";
+            const isTestSuccess = testState === "success";
+            const isTestError = testState === "error";
+            const missingKeys = testMissingKeys[preset.key] || [];
+            const missingValues = testMissingValues[preset.key] || {};
+            const isActive = activeProvider === preset.key;
+            return (
+              <div
+                key={preset.key}
+                className={`rounded-lg border-2 p-3 flex flex-col gap-2 w-full overflow-hidden ${
+                  isActive
+                    ? "border-primary bg-primary/10"
+                    : isTestSuccess
+                      ? "border-primary/60 bg-primary/5"
+                      : isTestError
+                        ? "border-destructive/60 bg-destructive/5"
+                        : "border-border bg-card-alt"
+                }`}
+              >
+                <div className="flex w-full flex-nowrap items-start gap-3 overflow-hidden">
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
+                      {isActive && (
+                        <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary text-primary-foreground">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">{preset.description}</p>
+                  </div>
+                  <ResponsiveActions
+                    variant="router"
+                    className="shrink-0"
+                    icon={
+                      <>
+                        <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => handleTogglePresetPreview(preset.key)} title={expandedPresetKey === preset.key ? "Hide config" : "Show current config"}>
+                          {expandedPresetKey === preset.key ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                        </Button>
+                        <Button size="icon" variant="outline" className={`h-9 w-9 ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`} onClick={() => handleTestPreset(preset.key)} title="Test">
+                          <FlaskConical className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" className="h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90" disabled={isLoading} onClick={() => handleApplyPreset(preset.key)} title={isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}>
+                          <RocketIcon />
+                        </Button>
+                      </>
+                    }
+                    text={
+                      <>
+                        <Button size="sm" variant="outline" className="max-w-[8.5rem]" onClick={() => handleTogglePresetPreview(preset.key)}>
+                          <span className="block truncate">{expandedPresetKey === preset.key ? "Hide config" : "Show config"}</span>
+                        </Button>
+                        <Button size="sm" variant="outline" className={`max-w-[6rem] ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`} onClick={() => handleTestPreset(preset.key)}>
+                          <span className="block truncate">Test</span>
+                        </Button>
+                        <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 max-w-[6.5rem]" disabled={isLoading} onClick={() => handleApplyPreset(preset.key)}>
+                          <span className="block truncate">{isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}</span>
+                        </Button>
+                      </>
+                    }
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+                  {isSuccess && <span className="text-xs text-green-600">Saved</span>}
+                  {status === "error" && <span className="text-xs text-red-600">Failed</span>}
+                  {applyHint[preset.key] && (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-xs text-amber-600">{applyHint[preset.key]}</span>
+                      <button className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink" onClick={() => setApplyHint((prev) => ({ ...prev, [preset.key]: "" }))} title="Dismiss">
+                        <Cross2Icon className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {testStatus[preset.key] === "loading" && <span className="text-xs text-muted-foreground">Testing...</span>}
+                  {(testStatus[preset.key] === "success" || testStatus[preset.key] === "error") && (
+                    <span className="inline-flex items-center gap-1">
+                      <span className={`text-xs ${testStatus[preset.key] === "success" ? "text-green-600" : "text-red-600"}`}>
+                        {testMessage[preset.key] || (testStatus[preset.key] === "error" ? "Failed" : "")}
+                      </span>
+                      <button
+                        className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink"
+                        onClick={() => {
+                          setTestStatus((prev) => ({ ...prev, [preset.key]: "idle" }));
+                          setTestMessage((prev) => ({ ...prev, [preset.key]: "" }));
+                          setTestMissingKeys((prev) => ({ ...prev, [preset.key]: [] }));
+                        }}
+                        title="Clear test status"
+                      >
+                        <Cross2Icon className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+                {expandedPresetKey === preset.key && (
+                  <div className="rounded-lg border border-border bg-canvas/70 p-2">
+                    {(() => {
+                      const preview = getPresetPreviewConfig(preset.key);
+                      return (
+                        <>
+                          {preview.note && <p className="text-xs text-muted-foreground mb-2">{preview.note}</p>}
+                          <pre className="text-xs text-ink whitespace-pre-wrap break-words font-mono">
+                            {JSON.stringify(preview.settings, null, 2)}
+                          </pre>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+                {missingKeys.length > 0 && (
+                  <div className="rounded-lg border border-dashed border-border bg-canvas/60 p-2">
+                    <p className="text-xs text-muted-foreground mb-2">Fill missing env values to continue testing.</p>
+                    <p className="text-xs text-muted-foreground mb-2">Press Tab to accept the placeholder.</p>
+                    <div className="flex flex-col gap-2">
+                      {missingKeys.map((key) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-mono min-w-[6rem]">{key}</span>
+                          <input
+                            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1"
+                            placeholder={getMissingEnvPlaceholder(key)}
+                            value={missingValues[key] ?? ""}
+                            onChange={(e) => handleMissingValueChange(preset.key, key, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveMissingAndRetest(preset.key);
+                              if (e.key === "Tab" && !(missingValues[key] ?? "").trim()) {
+                                const placeholder = getMissingEnvPlaceholder(key);
+                                if (placeholder !== "value") {
+                                  e.preventDefault();
+                                  handleMissingValueChange(preset.key, key, placeholder);
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <Button size="sm" variant="outline" onClick={() => handleSaveMissingAndRetest(preset.key)}>
+                        Save & Retest
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </CollapsibleCard>
+      )}
+
+      <ClaudeCodeVersionSection />
+
+      {!hasContent && !search && (
+        <EmptyState icon={GearIcon} message="No configuration found" hint="Create ~/.claude/settings.json or CLAUDE.md" />
+      )}
+
+      {(filteredContextFiles.length > 0 || (settingsMatchSearch && settings?.raw)) && (
+        <div className="space-y-4">
+          {filteredContextFiles.length > 0 && (
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2 border-b border-border">
+                <span className="text-sm font-medium text-ink">📄 Context ({filteredContextFiles.length})</span>
+              </div>
+              <div className="p-3 space-y-1">
+                {filteredContextFiles.map((file) => (
+                  <ContextFileItem key={file.path} file={file} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {settingsMatchSearch && settings?.raw && (
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+                <GearIcon className="w-4 h-4" />
+                <span className="text-sm font-medium text-ink">Configuration</span>
+              </div>
+              <div className="p-3">
+                <ConfigFileItem name="settings.json" path={settingsPath} content={settings.raw} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {search && filteredContextFiles.length === 0 && !settingsMatchSearch && (
+        <p className="text-muted-foreground text-sm">No local settings match "{search}"</p>
+      )}
+
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
+    </ConfigPage>
+  );
+}
