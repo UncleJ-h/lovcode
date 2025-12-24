@@ -1,14 +1,21 @@
 /** Feature status */
 export type FeatureStatus = "pending" | "running" | "completed" | "needs-review";
 
-/** Panel state */
-export interface PanelState {
+/** Session within a panel (a terminal tab) */
+export interface SessionState {
   id: string;
   pty_id: string;
   title: string;
+  command?: string;
+}
+
+/** Panel state (container for multiple session tabs) */
+export interface PanelState {
+  id: string;
+  sessions: SessionState[];
+  active_session_id: string;
   is_shared: boolean;
   cwd: string;
-  command?: string;
 }
 
 /** Feature within a project */

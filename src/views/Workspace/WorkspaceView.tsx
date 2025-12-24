@@ -8,7 +8,7 @@ import { ProjectSidebar } from "./ProjectSidebar";
 import { FeatureTabs } from "./FeatureTabs";
 import { PanelGrid, SharedPanelZone } from "../../components/PanelGrid";
 import type { PanelState } from "../../components/PanelGrid";
-import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus } from "./types";
+import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelState as StoredPanelState, SessionState as StoredSessionState } from "./types";
 
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
@@ -234,44 +234,27 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
-  // Update feature status handler
+  // Update feature status handler (completed = auto archive)
   const handleUpdateFeatureStatus = useCallback(
     (featureId: string, status: FeatureStatus) => {
       if (!activeProject || !workspace) return;
 
+      const shouldArchive = status === "completed";
+      const nonArchivedFeatures = activeProject.features.filter(
+        (f) => f.id !== featureId && !f.archived
+      );
+
       const newProjects = workspace.projects.map((p) => {
         if (p.id !== activeProject.id) return p;
         return {
           ...p,
           features: p.features.map((f) =>
-            f.id === featureId ? { ...f, status } : f
+            f.id === featureId
+              ? { ...f, status, archived: shouldArchive ? true : f.archived }
+              : f
           ),
-        };
-      });
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-      });
-    },
-    [activeProject, workspace, saveWorkspace]
-  );
-
-  // Archive feature handler (hide from tabs but keep data)
-  const handleArchiveFeature = useCallback(
-    (featureId: string) => {
-      if (!activeProject || !workspace) return;
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== activeProject.id) return p;
-        const nonArchivedFeatures = p.features.filter((f) => f.id !== featureId && !f.archived);
-        return {
-          ...p,
-          features: p.features.map((f) =>
-            f.id === featureId ? { ...f, archived: true } : f
-          ),
-          // Switch to next non-archived feature if archiving current
           active_feature_id:
-            p.active_feature_id === featureId
+            shouldArchive && p.active_feature_id === featureId
               ? nonArchivedFeatures[0]?.id
               : p.active_feature_id,
         };
@@ -314,13 +297,14 @@ export function WorkspaceView() {
       if (!activeProject || !activeFeature || !workspace) return;
 
       const panelId = crypto.randomUUID();
+      const sessionId = crypto.randomUUID();
       const ptyId = crypto.randomUUID();
 
-      const newPanel: PanelState = {
+      const newPanel: StoredPanelState = {
         id: panelId,
-        ptyId,
-        title: "Terminal",
-        isShared: false,
+        sessions: [{ id: sessionId, pty_id: ptyId, title: "Terminal" }],
+        active_session_id: sessionId,
+        is_shared: false,
         cwd: activeProject.path,
       };
 
@@ -332,7 +316,7 @@ export function WorkspaceView() {
             if (f.id !== activeFeature.id) return f;
             return {
               ...f,
-              panels: [...f.panels, { ...newPanel, is_shared: false, pty_id: ptyId }],
+              panels: [...f.panels, newPanel],
               layout_direction: direction,
             };
           }),
@@ -352,23 +336,25 @@ export function WorkspaceView() {
     (panelId: string) => {
       if (!activeProject || !workspace) return;
 
-      // Find the panel to get its pty_id before removing
-      let ptyIdToKill: string | null = null;
+      // Find the panel to get all its session pty_ids before removing
+      const ptyIdsToKill: string[] = [];
       for (const feature of activeProject.features) {
         const panel = feature.panels.find((p) => p.id === panelId);
         if (panel) {
-          ptyIdToKill = panel.pty_id;
+          ptyIdsToKill.push(...(panel.sessions || []).map((s) => s.pty_id));
           break;
         }
       }
-      if (!ptyIdToKill) {
-        const sharedPanel = activeProject.shared_panels.find((p) => p.id === panelId);
-        if (sharedPanel) ptyIdToKill = sharedPanel.pty_id;
+      if (ptyIdsToKill.length === 0) {
+        const sharedPanel = (activeProject.shared_panels || []).find((p) => p.id === panelId);
+        if (sharedPanel) {
+          ptyIdsToKill.push(...(sharedPanel.sessions || []).map((s) => s.pty_id));
+        }
       }
 
-      // Kill the PTY session
-      if (ptyIdToKill) {
-        invoke("pty_kill", { id: ptyIdToKill }).catch(console.error);
+      // Kill all PTY sessions
+      for (const ptyId of ptyIdsToKill) {
+        invoke("pty_kill", { id: ptyId }).catch(console.error);
       }
 
       const newProjects = workspace.projects.map((p) => {
@@ -379,7 +365,7 @@ export function WorkspaceView() {
             ...f,
             panels: f.panels.filter((panel) => panel.id !== panelId),
           })),
-          shared_panels: p.shared_panels.filter((panel) => panel.id !== panelId),
+          shared_panels: (p.shared_panels || []).filter((panel) => panel.id !== panelId),
         };
       });
 
@@ -400,11 +386,12 @@ export function WorkspaceView() {
         if (p.id !== activeProject.id) return p;
 
         // Check if panel is in shared
-        const sharedIndex = p.shared_panels.findIndex((panel) => panel.id === panelId);
+        const sharedPanels = p.shared_panels || [];
+        const sharedIndex = sharedPanels.findIndex((panel) => panel.id === panelId);
         if (sharedIndex !== -1) {
           // Move from shared to active feature
-          const panel = p.shared_panels[sharedIndex];
-          const newSharedPanels = p.shared_panels.filter((_, i) => i !== sharedIndex);
+          const panel = sharedPanels[sharedIndex];
+          const newSharedPanels = sharedPanels.filter((_, i) => i !== sharedIndex);
           const newFeatures = p.features.map((f) => {
             if (f.id !== p.active_feature_id) return f;
             return {
@@ -446,23 +433,30 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
-  // Reload panel handler (kills old PTY and creates new one)
+  // Reload panel handler (kills active session's PTY and creates new one)
   const handlePanelReload = useCallback(
     (panelId: string) => {
       if (!activeProject || !workspace) return;
 
-      // Find and kill the old PTY session
+      // Find the panel and its active session
+      let activeSessionId: string | null = null;
       let oldPtyId: string | null = null;
       for (const feature of activeProject.features) {
         const panel = feature.panels.find((p) => p.id === panelId);
         if (panel) {
-          oldPtyId = panel.pty_id;
+          activeSessionId = panel.active_session_id;
+          const activeSession = (panel.sessions || []).find((s) => s.id === activeSessionId);
+          if (activeSession) oldPtyId = activeSession.pty_id;
           break;
         }
       }
       if (!oldPtyId) {
-        const sharedPanel = activeProject.shared_panels.find((p) => p.id === panelId);
-        if (sharedPanel) oldPtyId = sharedPanel.pty_id;
+        const sharedPanel = (activeProject.shared_panels || []).find((p) => p.id === panelId);
+        if (sharedPanel) {
+          activeSessionId = sharedPanel.active_session_id;
+          const activeSession = (sharedPanel.sessions || []).find((s) => s.id === activeSessionId);
+          if (activeSession) oldPtyId = activeSession.pty_id;
+        }
       }
       if (oldPtyId) {
         invoke("pty_kill", { id: oldPtyId }).catch(console.error);
@@ -477,11 +471,25 @@ export function WorkspaceView() {
           features: p.features.map((f) => ({
             ...f,
             panels: f.panels.map((panel) =>
-              panel.id === panelId ? { ...panel, pty_id: newPtyId } : panel
+              panel.id === panelId
+                ? {
+                    ...panel,
+                    sessions: (panel.sessions || []).map((s) =>
+                      s.id === activeSessionId ? { ...s, pty_id: newPtyId } : s
+                    ),
+                  }
+                : panel
             ),
           })),
-          shared_panels: p.shared_panels.map((panel) =>
-            panel.id === panelId ? { ...panel, pty_id: newPtyId } : panel
+          shared_panels: (p.shared_panels || []).map((panel) =>
+            panel.id === panelId
+              ? {
+                  ...panel,
+                  sessions: (panel.sessions || []).map((s) =>
+                    s.id === activeSessionId ? { ...s, pty_id: newPtyId } : s
+                  ),
+                }
+              : panel
           ),
         };
       });
@@ -494,9 +502,100 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
-  // Panel title change handler
-  const handlePanelTitleChange = useCallback(
-    (panelId: string, title: string) => {
+  // Add session to panel handler
+  const handleSessionAdd = useCallback(
+    (panelId: string) => {
+      if (!activeProject || !workspace) return;
+
+      const sessionId = crypto.randomUUID();
+      const ptyId = crypto.randomUUID();
+      const newSession: StoredSessionState = { id: sessionId, pty_id: ptyId, title: "Terminal" };
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) => ({
+            ...f,
+            panels: f.panels.map((panel) =>
+              panel.id === panelId
+                ? { ...panel, sessions: [...(panel.sessions || []), newSession], active_session_id: sessionId }
+                : panel
+            ),
+          })),
+          shared_panels: (p.shared_panels || []).map((panel) =>
+            panel.id === panelId
+              ? { ...panel, sessions: [...(panel.sessions || []), newSession], active_session_id: sessionId }
+              : panel
+          ),
+        };
+      });
+
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Close session handler
+  const handleSessionClose = useCallback(
+    (panelId: string, sessionId: string) => {
+      if (!activeProject || !workspace) return;
+
+      // Find and kill the PTY session
+      for (const feature of activeProject.features) {
+        const panel = feature.panels.find((p) => p.id === panelId);
+        if (panel) {
+          const session = (panel.sessions || []).find((s) => s.id === sessionId);
+          if (session) invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+          break;
+        }
+      }
+      const sharedPanel = (activeProject.shared_panels || []).find((p) => p.id === panelId);
+      if (sharedPanel) {
+        const session = (sharedPanel.sessions || []).find((s) => s.id === sessionId);
+        if (session) invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+      }
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) => ({
+            ...f,
+            panels: f.panels.map((panel) => {
+              if (panel.id !== panelId) return panel;
+              const newSessions = (panel.sessions || []).filter((s) => s.id !== sessionId);
+              const newActiveId = panel.active_session_id === sessionId
+                ? newSessions[0]?.id || ""
+                : panel.active_session_id;
+              return { ...panel, sessions: newSessions, active_session_id: newActiveId };
+            }),
+          })),
+          shared_panels: (p.shared_panels || []).map((panel) => {
+            if (panel.id !== panelId) return panel;
+            const newSessions = (panel.sessions || []).filter((s) => s.id !== sessionId);
+            const newActiveId = panel.active_session_id === sessionId
+              ? newSessions[0]?.id || ""
+              : panel.active_session_id;
+            return { ...panel, sessions: newSessions, active_session_id: newActiveId };
+          }),
+        };
+      });
+
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Select session handler
+  const handleSessionSelect = useCallback(
+    (panelId: string, sessionId: string) => {
       if (!activeProject || !workspace) return;
 
       const newProjects = workspace.projects.map((p) => {
@@ -506,11 +605,54 @@ export function WorkspaceView() {
           features: p.features.map((f) => ({
             ...f,
             panels: f.panels.map((panel) =>
-              panel.id === panelId ? { ...panel, title } : panel
+              panel.id === panelId ? { ...panel, active_session_id: sessionId } : panel
             ),
           })),
-          shared_panels: p.shared_panels.map((panel) =>
-            panel.id === panelId ? { ...panel, title } : panel
+          shared_panels: (p.shared_panels || []).map((panel) =>
+            panel.id === panelId ? { ...panel, active_session_id: sessionId } : panel
+          ),
+        };
+      });
+
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Session title change handler
+  const handleSessionTitleChange = useCallback(
+    (panelId: string, sessionId: string, title: string) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) => ({
+            ...f,
+            panels: f.panels.map((panel) =>
+              panel.id === panelId
+                ? {
+                    ...panel,
+                    sessions: (panel.sessions || []).map((s) =>
+                      s.id === sessionId ? { ...s, title } : s
+                    ),
+                  }
+                : panel
+            ),
+          })),
+          shared_panels: (p.shared_panels || []).map((panel) =>
+            panel.id === panelId
+              ? {
+                  ...panel,
+                  sessions: (panel.sessions || []).map((s) =>
+                    s.id === sessionId ? { ...s, title } : s
+                  ),
+                }
+              : panel
           ),
         };
       });
@@ -532,11 +674,15 @@ export function WorkspaceView() {
         feature.id,
         feature.panels.map((p) => ({
           id: p.id,
-          ptyId: p.pty_id,
-          title: p.title,
+          sessions: (p.sessions || []).map((s) => ({
+            id: s.id,
+            ptyId: s.pty_id,
+            title: s.title,
+            command: s.command,
+          })),
+          activeSessionId: p.active_session_id,
           isShared: p.is_shared,
           cwd: activeProject?.path || "",
-          command: p.command ?? undefined,
         }))
       );
     });
@@ -545,13 +691,17 @@ export function WorkspaceView() {
 
   const sharedPanels = useMemo<PanelState[]>(
     () =>
-      activeProject?.shared_panels.map((p) => ({
+      (activeProject?.shared_panels || []).map((p) => ({
         id: p.id,
-        ptyId: p.pty_id,
-        title: p.title,
+        sessions: (p.sessions || []).map((s) => ({
+          id: s.id,
+          ptyId: s.pty_id,
+          title: s.title,
+          command: s.command,
+        })),
+        activeSessionId: p.active_session_id,
         isShared: true,
         cwd: activeProject?.path || "",
-        command: p.command ?? undefined,
       })) || [],
     [activeProject?.shared_panels, activeProject?.path]
   );
@@ -588,7 +738,6 @@ export function WorkspaceView() {
                 activeFeatureId={activeProject.active_feature_id}
                 onSelectFeature={handleSelectFeature}
                 onAddFeature={handleStartAddFeature}
-                onArchiveFeature={handleArchiveFeature}
                 onUpdateFeatureStatus={handleUpdateFeatureStatus}
                 isAddingFeature={isAddingFeature}
                 newFeatureName={newFeatureName}
@@ -600,8 +749,7 @@ export function WorkspaceView() {
               {/* Panel area */}
               <div className="flex-1 min-h-0 h-full">
                 {activeFeature ? (
-                  console.log('[DEBUG][WorkspaceView] PanelGroup autoSaveId:', `workspace-${activeProject.id}`, 'sharedPanels:', sharedPanels.length),
-                  <PanelGroup orientation="horizontal" autoSaveId={`workspace-${activeProject.id}`} className="h-full">
+                  <PanelGroup orientation="horizontal" id={`workspace-${activeProject.id}`} className="h-full">
                     {/* Shared panels zone */}
                     {sharedPanels.length > 0 && (
                       <>
@@ -611,7 +759,10 @@ export function WorkspaceView() {
                             onPanelClose={handlePanelClose}
                             onPanelToggleShared={handlePanelToggleShared}
                             onPanelReload={handlePanelReload}
-                            onPanelTitleChange={handlePanelTitleChange}
+                            onSessionAdd={handleSessionAdd}
+                            onSessionClose={handleSessionClose}
+                            onSessionSelect={handleSessionSelect}
+                            onSessionTitleChange={handleSessionTitleChange}
                           />
                         </Panel>
                         <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
@@ -628,14 +779,16 @@ export function WorkspaceView() {
                               feature.id === activeFeature.id ? "" : "invisible pointer-events-none"
                             }`}
                           >
-                            {console.log('[DEBUG][WorkspaceView] PanelGrid feature.id:', feature.id, 'panels:', allFeaturePanels.get(feature.id)?.length)}
                             <PanelGrid
                               panels={allFeaturePanels.get(feature.id) || []}
                               onPanelClose={handlePanelClose}
                               onPanelAdd={handlePanelAdd}
                               onPanelToggleShared={handlePanelToggleShared}
                               onPanelReload={handlePanelReload}
-                              onPanelTitleChange={handlePanelTitleChange}
+                              onSessionAdd={handleSessionAdd}
+                              onSessionClose={handleSessionClose}
+                              onSessionSelect={handleSessionSelect}
+                              onSessionTitleChange={handleSessionTitleChange}
                               direction={feature.layout_direction || "horizontal"}
                               autoSaveId={feature.id}
                             />

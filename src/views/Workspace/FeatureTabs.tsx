@@ -1,5 +1,5 @@
 import type React from "react";
-import { PlusIcon, Cross2Icon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, CheckIcon } from "@radix-ui/react-icons";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, CheckIcon, Cross2Icon } from "@radix-ui/react-icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -13,7 +13,6 @@ interface FeatureTabsProps {
   activeFeatureId?: string;
   onSelectFeature: (id: string) => void;
   onAddFeature: () => void;
-  onArchiveFeature: (id: string) => void;
   onUpdateFeatureStatus: (id: string, status: FeatureStatus) => void;
   isAddingFeature?: boolean;
   newFeatureName?: string;
@@ -34,7 +33,6 @@ export function FeatureTabs({
   activeFeatureId,
   onSelectFeature,
   onAddFeature,
-  onArchiveFeature,
   onUpdateFeatureStatus,
   isAddingFeature,
   newFeatureName,
@@ -51,7 +49,7 @@ export function FeatureTabs({
           <ContextMenu key={feature.id}>
             <ContextMenuTrigger asChild>
               <div
-                className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-ink hover:bg-card-alt"
@@ -60,16 +58,6 @@ export function FeatureTabs({
               >
                 <StatusIcon status={feature.status} />
                 <span className="text-sm truncate max-w-32">{feature.name}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onArchiveFeature(feature.id);
-                  }}
-                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-muted-foreground hover:bg-card-alt transition-all"
-                  title="Archive feature"
-                >
-                  <Cross2Icon className="w-3 h-3" />
-                </button>
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="min-w-[160px]">

@@ -122,26 +122,7 @@ export function TerminalPane({
     // Track cleanup state - use object to avoid closure stale value
     const mountState = { isMounted: true };
 
-    // Fix: Handle CJK input directly via textarea input event
-    // xterm.js has issues with CJK punctuation - it doesn't clear textarea properly
     const textarea = term.textarea;
-    let inputHandled = false;
-
-    if (textarea) {
-      textarea.addEventListener("input", () => {
-        const value = textarea.value;
-        if (value) {
-          console.log("[DEBUG][input] Sending via input event:", JSON.stringify(value));
-          const encoder = new TextEncoder();
-          const bytes = Array.from(encoder.encode(value));
-          invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
-          textarea.value = "";
-          inputHandled = true;
-          // Reset flag after microtask so onData can check it
-          queueMicrotask(() => { inputHandled = false; });
-        }
-      });
-    }
 
     // Initialize PTY session (create if not exists, reuse if exists)
     const initPty = async () => {
@@ -192,16 +173,19 @@ export function TerminalPane({
       }
     };
 
-    // Handle user input - skip if already handled by input event
+    // Handle user input
     const onDataDisposable = term.onData((data) => {
-      if (inputHandled) {
-        console.log("[DEBUG][onData] Skipping, already handled by input event:", JSON.stringify(data));
-        return;
-      }
-      console.log("[DEBUG][onData] Sending:", JSON.stringify(data));
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
+      // Fix: xterm.js doesn't clear textarea for CJK - clear only what was sent
+      if (textarea && textarea.value) {
+        if (textarea.value.startsWith(data)) {
+          textarea.value = textarea.value.slice(data.length);
+        } else {
+          textarea.value = "";
+        }
+      }
     });
 
     // Handle title changes
