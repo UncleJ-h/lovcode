@@ -67,6 +67,8 @@ function EditableTabTitle({
 
 export interface SessionPanelProps {
   panel: PanelState;
+  /** Whether this panel has global focus */
+  isActive?: boolean;
   /** Show expand/collapse toggle */
   collapsible?: boolean;
   /** Current expanded state (only used if collapsible) */
@@ -92,6 +94,7 @@ export interface SessionPanelProps {
 
 export function SessionPanel({
   panel,
+  isActive = false,
   collapsible = false,
   isExpanded = true,
   onToggleExpand,
@@ -126,7 +129,7 @@ export function SessionPanel({
             <TabsTrigger
               key={session.id}
               value={session.id}
-              className="relative h-auto px-0 py-1 text-xs border-b-2 border-transparent rounded-none bg-transparent shadow-none text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-ink data-[state=active]:border-primary group"
+              className={`relative h-auto px-0 py-1 text-xs border-b-2 border-transparent rounded-none bg-transparent shadow-none text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-ink ${isActive ? "data-[state=active]:border-primary" : "data-[state=active]:border-muted-foreground"} group`}
             >
               <EditableTabTitle
                 title={session.title}

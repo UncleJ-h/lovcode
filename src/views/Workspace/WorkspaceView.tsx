@@ -15,6 +15,7 @@ export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(false);
+  const [activePanelId, setActivePanelId] = useState<string | undefined>();
 
   // Load workspace data and reset running features (PTY sessions don't survive restarts)
   useEffect(() => {
@@ -1120,6 +1121,8 @@ export function WorkspaceView() {
                 onSessionTitleChange={handleSessionTitleChange}
                 collapsed={sharedPanelCollapsed}
                 onCollapsedChange={setSharedPanelCollapsed}
+                activePanelId={activePanelId}
+                onPanelFocus={setActivePanelId}
               />
 
               {/* Main content area */}
@@ -1146,6 +1149,8 @@ export function WorkspaceView() {
                           <PanelGrid
                             panels={featurePanels}
                             layout={feature.layout}
+                            activePanelId={activePanelId}
+                            onPanelFocus={setActivePanelId}
                             onPanelClose={handlePanelClose}
                             onPanelSplit={handlePanelSplit}
                             onPanelToggleShared={handlePanelToggleShared}

@@ -23,6 +23,8 @@ export interface PanelState {
 export interface PanelGridProps {
   panels: PanelState[];
   layout?: LayoutNode;
+  activePanelId?: string;
+  onPanelFocus?: (id: string) => void;
   onPanelClose: (id: string) => void;
   /** Split a panel in the given direction (tmux-style) */
   onPanelSplit: (panelId: string, direction: "horizontal" | "vertical") => void;
@@ -42,6 +44,8 @@ export interface PanelGridProps {
 function LayoutRenderer({
   node,
   panels,
+  activePanelId,
+  onPanelFocus,
   onPanelClose,
   onPanelSplit,
   onPanelToggleShared,
@@ -53,6 +57,8 @@ function LayoutRenderer({
 }: {
   node: LayoutNode;
   panels: PanelState[];
+  activePanelId?: string;
+  onPanelFocus?: (id: string) => void;
   onPanelClose: (id: string) => void;
   onPanelSplit: (panelId: string, direction: "horizontal" | "vertical") => void;
   onPanelToggleShared: (id: string) => void;
@@ -65,10 +71,15 @@ function LayoutRenderer({
   if (node.type === "panel") {
     const panel = panels.find((p) => p.id === node.panelId);
     if (!panel) return null;
+    const isActive = activePanelId === panel.id;
 
     return (
-      <div className="h-full w-full flex flex-col bg-terminal border border-border overflow-hidden">
+      <div
+        className="h-full w-full flex flex-col bg-terminal border border-border overflow-hidden"
+        onMouseDown={() => onPanelFocus?.(panel.id)}
+      >
         <SessionPanel
+          isActive={isActive}
           panel={panel}
           showSplitActions
           onPanelSplit={(dir) => onPanelSplit(panel.id, dir)}
@@ -91,6 +102,8 @@ function LayoutRenderer({
         <LayoutRenderer
           node={node.first}
           panels={panels}
+          activePanelId={activePanelId}
+          onPanelFocus={onPanelFocus}
           onPanelClose={onPanelClose}
           onPanelSplit={onPanelSplit}
           onPanelToggleShared={onPanelToggleShared}
@@ -105,6 +118,8 @@ function LayoutRenderer({
         <LayoutRenderer
           node={node.second}
           panels={panels}
+          activePanelId={activePanelId}
+          onPanelFocus={onPanelFocus}
           onPanelClose={onPanelClose}
           onPanelSplit={onPanelSplit}
           onPanelToggleShared={onPanelToggleShared}
@@ -122,6 +137,8 @@ function LayoutRenderer({
 export function PanelGrid({
   panels,
   layout,
+  activePanelId: controlledActivePanelId,
+  onPanelFocus: controlledOnPanelFocus,
   onPanelClose,
   onPanelSplit,
   onPanelToggleShared,
@@ -133,12 +150,33 @@ export function PanelGrid({
   direction = "horizontal",
   onInitialPanelCreate,
 }: PanelGridProps) {
+  // Internal state for active panel (uncontrolled mode)
+  const [internalActivePanelId, setInternalActivePanelId] = useState<string | undefined>(
+    () => panels[0]?.id
+  );
+
+  // Use controlled or internal state
+  const activePanelId = controlledActivePanelId ?? internalActivePanelId;
+  const handlePanelFocus = useCallback((id: string) => {
+    controlledOnPanelFocus?.(id);
+    if (controlledActivePanelId === undefined) {
+      setInternalActivePanelId(id);
+    }
+  }, [controlledOnPanelFocus, controlledActivePanelId]);
+
   // Auto-create terminal when empty
   useEffect(() => {
     if (panels.length === 0 && onInitialPanelCreate) {
       onInitialPanelCreate();
     }
   }, [panels.length, onInitialPanelCreate]);
+
+  // Auto-select first panel if current active is gone
+  useEffect(() => {
+    if (panels.length > 0 && !panels.find(p => p.id === activePanelId)) {
+      setInternalActivePanelId(panels[0].id);
+    }
+  }, [panels, activePanelId]);
 
   if (panels.length === 0) {
     return null;
@@ -151,6 +189,8 @@ export function PanelGrid({
         <LayoutRenderer
           node={layout}
           panels={panels}
+          activePanelId={activePanelId}
+          onPanelFocus={handlePanelFocus}
           onPanelClose={onPanelClose}
           onPanelSplit={onPanelSplit}
           onPanelToggleShared={onPanelToggleShared}
@@ -167,24 +207,31 @@ export function PanelGrid({
   // Legacy flat layout (backwards compatibility)
   return (
     <Allotment vertical={direction === "vertical"} className="h-full">
-      {panels.map((panel) => (
-        <Allotment.Pane key={panel.id} minSize={150}>
-          <div className="h-full flex flex-col bg-terminal border border-border overflow-hidden">
-            <SessionPanel
-              panel={panel}
-              showSplitActions
-              onPanelSplit={(dir) => onPanelSplit(panel.id, dir)}
-              onPanelClose={() => onPanelClose(panel.id)}
-              onPanelToggleShared={() => onPanelToggleShared(panel.id)}
-              onPanelReload={() => onPanelReload(panel.id)}
-              onSessionAdd={() => onSessionAdd(panel.id)}
-              onSessionClose={(sessionId) => onSessionClose(panel.id, sessionId)}
-              onSessionSelect={(sessionId) => onSessionSelect(panel.id, sessionId)}
-              onSessionTitleChange={(sessionId, title) => onSessionTitleChange(panel.id, sessionId, title)}
-            />
-          </div>
-        </Allotment.Pane>
-      ))}
+      {panels.map((panel) => {
+        const isActive = activePanelId === panel.id;
+        return (
+          <Allotment.Pane key={panel.id} minSize={150}>
+            <div
+              className="h-full flex flex-col bg-terminal border border-border overflow-hidden"
+              onMouseDown={() => handlePanelFocus(panel.id)}
+            >
+              <SessionPanel
+                isActive={isActive}
+                panel={panel}
+                showSplitActions
+                onPanelSplit={(dir) => onPanelSplit(panel.id, dir)}
+                onPanelClose={() => onPanelClose(panel.id)}
+                onPanelToggleShared={() => onPanelToggleShared(panel.id)}
+                onPanelReload={() => onPanelReload(panel.id)}
+                onSessionAdd={() => onSessionAdd(panel.id)}
+                onSessionClose={(sessionId) => onSessionClose(panel.id, sessionId)}
+                onSessionSelect={(sessionId) => onSessionSelect(panel.id, sessionId)}
+                onSessionTitleChange={(sessionId, title) => onSessionTitleChange(panel.id, sessionId, title)}
+              />
+            </div>
+          </Allotment.Pane>
+        );
+      })}
     </Allotment>
   );
 }

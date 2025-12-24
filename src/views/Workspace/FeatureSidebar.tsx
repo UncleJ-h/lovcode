@@ -26,6 +26,9 @@ interface FeatureSidebarProps {
   // Sidebar state
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  // Global focus
+  activePanelId?: string;
+  onPanelFocus?: (id: string) => void;
 }
 
 export function FeatureSidebar({
@@ -42,6 +45,8 @@ export function FeatureSidebar({
   onSessionTitleChange,
   collapsed,
   onCollapsedChange,
+  activePanelId,
+  onPanelFocus,
 }: FeatureSidebarProps) {
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => new Set(pinnedPanels.map(p => p.id)));
   const [pinnedExpanded, setPinnedExpanded] = useState(true);
@@ -171,14 +176,17 @@ export function FeatureSidebar({
           {pinnedExpanded && pinnedPanels.length > 0 && <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {pinnedPanels.map((panel) => {
               const isExpanded = expandedPanels.has(panel.id);
+              const isActive = activePanelId === panel.id;
               return (
                 <div
                   key={panel.id}
                   className={`flex flex-col bg-terminal border border-border overflow-hidden ${
                     isExpanded ? (expandedCount > 0 ? "flex-1 min-h-0" : "flex-1") : "flex-shrink-0"
                   }`}
+                  onMouseDown={() => onPanelFocus?.(panel.id)}
                 >
                   <SessionPanel
+                    isActive={isActive}
                     panel={panel}
                     collapsible
                     isExpanded={isExpanded}
