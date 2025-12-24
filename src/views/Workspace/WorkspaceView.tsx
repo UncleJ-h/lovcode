@@ -8,7 +8,7 @@ import { ProjectSidebar } from "./ProjectSidebar";
 import { FeatureTabs } from "./FeatureTabs";
 import { PanelGrid, SharedPanelZone } from "../../components/PanelGrid";
 import type { PanelState } from "../../components/PanelGrid";
-import type { WorkspaceData, WorkspaceProject, Feature } from "./types";
+import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus } from "./types";
 
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
@@ -270,6 +270,28 @@ export function WorkspaceView() {
           ? { ...p, active_feature_id: featureId }
           : p
       );
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Update feature status handler
+  const handleUpdateFeatureStatus = useCallback(
+    (featureId: string, status: FeatureStatus) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, status } : f
+          ),
+        };
+      });
       saveWorkspace({
         ...workspace,
         projects: newProjects,
@@ -557,6 +579,7 @@ export function WorkspaceView() {
                 onSelectFeature={handleSelectFeature}
                 onAddFeature={handleStartAddFeature}
                 onRemoveFeature={handleRemoveFeature}
+                onUpdateFeatureStatus={handleUpdateFeatureStatus}
                 isAddingFeature={isAddingFeature}
                 newFeatureName={newFeatureName}
                 onNewFeatureNameChange={setNewFeatureName}
@@ -567,7 +590,8 @@ export function WorkspaceView() {
               {/* Panel area */}
               <div className="flex-1 min-h-0 h-full">
                 {activeFeature ? (
-                  <PanelGroup orientation="horizontal" id="workspace-main" className="h-full">
+                  console.log('[DEBUG][WorkspaceView] PanelGroup autoSaveId:', `workspace-${activeProject.id}`, 'sharedPanels:', sharedPanels.length),
+                  <PanelGroup orientation="horizontal" autoSaveId={`workspace-${activeProject.id}`} className="h-full">
                     {/* Shared panels zone */}
                     {sharedPanels.length > 0 && (
                       <>
@@ -594,6 +618,7 @@ export function WorkspaceView() {
                               feature.id === activeFeature.id ? "" : "invisible pointer-events-none"
                             }`}
                           >
+                            {console.log('[DEBUG][WorkspaceView] PanelGrid feature.id:', feature.id, 'panels:', allFeaturePanels.get(feature.id)?.length)}
                             <PanelGrid
                               panels={allFeaturePanels.get(feature.id) || []}
                               onPanelClose={handlePanelClose}

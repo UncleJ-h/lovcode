@@ -122,6 +122,31 @@ export function TerminalPane({
     // Track cleanup state - use object to avoid closure stale value
     const mountState = { isMounted: true };
 
+    // IME workaround for WKWebView (macOS)
+    // Problem: WKWebView may fire 'input' BEFORE 'compositionend', causing xterm.js to drop the input
+    // Solution: Track composition data and send it if xterm.js didn't handle it
+    const textarea = term.textarea;
+    let pendingCompositionData = "";
+
+    const handleCompositionEnd = (e: CompositionEvent) => {
+      if (!e.data) return;
+      pendingCompositionData = e.data;
+      // Use microtask to check after xterm.js processes the input event
+      queueMicrotask(() => {
+        if (pendingCompositionData) {
+          // xterm.js didn't send this data, we need to send it manually
+          const encoder = new TextEncoder();
+          const bytes = Array.from(encoder.encode(pendingCompositionData));
+          invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
+          pendingCompositionData = "";
+        }
+      });
+    };
+
+    if (textarea) {
+      textarea.addEventListener("compositionend", handleCompositionEnd as EventListener);
+    }
+
     // Initialize PTY session (create if not exists, reuse if exists)
     const initPty = async () => {
       try {
@@ -173,6 +198,10 @@ export function TerminalPane({
 
     // Handle user input
     const onDataDisposable = term.onData((data) => {
+      // If this data matches pending composition, clear it (xterm.js handled it)
+      if (pendingCompositionData && data === pendingCompositionData) {
+        pendingCompositionData = "";
+      }
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
@@ -208,6 +237,11 @@ export function TerminalPane({
       mountState.isMounted = false;
       onDataDisposable.dispose();
       onTitleDisposable.dispose();
+
+      // Remove IME event listeners
+      if (textarea) {
+        textarea.removeEventListener("compositionend", handleCompositionEnd as EventListener);
+      }
 
       // Unlisten events
       unlistenData.then((fn) => fn());

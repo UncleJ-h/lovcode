@@ -80,7 +80,7 @@ export function PanelGrid({
   return (
     <PanelGroup
       orientation={direction}
-      id={autoSaveId}
+      autoSaveId={autoSaveId}
       className="h-full"
     >
       {panels.map((panel, index) => (

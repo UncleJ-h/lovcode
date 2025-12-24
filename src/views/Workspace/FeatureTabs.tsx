@@ -1,4 +1,12 @@
+import type React from "react";
 import { PlusIcon, Cross2Icon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, CheckIcon } from "@radix-ui/react-icons";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from "../../components/ui/context-menu";
 import type { Feature, FeatureStatus } from "./types";
 
 interface FeatureTabsProps {
@@ -7,6 +15,7 @@ interface FeatureTabsProps {
   onSelectFeature: (id: string) => void;
   onAddFeature: () => void;
   onRemoveFeature: (id: string) => void;
+  onUpdateFeatureStatus: (id: string, status: FeatureStatus) => void;
   isAddingFeature?: boolean;
   newFeatureName?: string;
   onNewFeatureNameChange?: (name: string) => void;
@@ -14,12 +23,20 @@ interface FeatureTabsProps {
   onCancelAddFeature?: () => void;
 }
 
+const STATUS_OPTIONS: { value: FeatureStatus; label: string; icon: React.ReactNode }[] = [
+  { value: "pending", label: "Pending", icon: <TimerIcon className="w-3.5 h-3.5 text-muted-foreground" /> },
+  { value: "running", label: "Running", icon: <UpdateIcon className="w-3.5 h-3.5 text-blue-500" /> },
+  { value: "completed", label: "Completed", icon: <CheckCircledIcon className="w-3.5 h-3.5 text-green-500" /> },
+  { value: "needs-review", label: "Needs Review", icon: <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500" /> },
+];
+
 export function FeatureTabs({
   features,
   activeFeatureId,
   onSelectFeature,
   onAddFeature,
   onRemoveFeature,
+  onUpdateFeatureStatus,
   isAddingFeature,
   newFeatureName,
   onNewFeatureNameChange,
@@ -31,28 +48,51 @@ export function FeatureTabs({
       {features.map((feature) => {
         const isActive = feature.id === activeFeatureId;
         return (
-          <div
-            key={feature.id}
-            className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
-              isActive
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-ink hover:bg-card-alt"
-            }`}
-            onClick={() => onSelectFeature(feature.id)}
-          >
-            <StatusIcon status={feature.status} />
-            <span className="text-sm truncate max-w-32">{feature.name}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveFeature(feature.id);
-              }}
-              className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-card-alt transition-all"
-              title="Remove feature"
-            >
-              <Cross2Icon className="w-3 h-3" />
-            </button>
-          </div>
+          <ContextMenu key={feature.id}>
+            <ContextMenuTrigger asChild>
+              <div
+                className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-ink hover:bg-card-alt"
+                }`}
+                onClick={() => onSelectFeature(feature.id)}
+              >
+                <StatusIcon status={feature.status} />
+                <span className="text-sm truncate max-w-32">{feature.name}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveFeature(feature.id);
+                  }}
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-card-alt transition-all"
+                  title="Remove feature"
+                >
+                  <Cross2Icon className="w-3 h-3" />
+                </button>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="min-w-[160px]">
+              {STATUS_OPTIONS.map((option) => (
+                <ContextMenuItem
+                  key={option.value}
+                  onClick={() => onUpdateFeatureStatus(feature.id, option.value)}
+                  className={`gap-2 cursor-pointer ${feature.status === option.value ? "bg-accent" : ""}`}
+                >
+                  {option.icon}
+                  <span>{option.label}</span>
+                </ContextMenuItem>
+              ))}
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onClick={() => onRemoveFeature(feature.id)}
+                className="gap-2 cursor-pointer text-red-500 focus:text-red-500"
+              >
+                <Cross2Icon className="w-3.5 h-3.5" />
+                <span>Remove</span>
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         );
       })}
       {isAddingFeature ? (
