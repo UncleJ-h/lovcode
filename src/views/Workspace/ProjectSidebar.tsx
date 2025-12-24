@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, HomeIcon, DashboardIcon, CubeIcon } from "@radix-ui/react-icons";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, HomeIcon, DashboardIcon, CubeIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -10,6 +10,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuSubContent,
   ContextMenuSeparator,
+  ContextMenuLabel,
 } from "../../components/ui/context-menu";
 import {
   DropdownMenu,
@@ -17,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import type { WorkspaceProject, FeatureStatus, Feature } from "./types";
+import type { WorkspaceProject, FeatureStatus } from "./types";
 
 function ProjectLogo({ projectPath }: { projectPath: string }) {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
@@ -41,15 +42,13 @@ function ProjectLogo({ projectPath }: { projectPath: string }) {
   );
 }
 
-type ViewMode = "projects" | "features";
-
 interface ProjectSidebarProps {
   projects: WorkspaceProject[];
   activeProjectId?: string;
   activeFeatureId?: string;
-  onSelectProject: (id: string) => void;
   onSelectFeature: (projectId: string, featureId: string) => void;
   onAddProject: () => void;
+  onAddFeature: (projectId: string) => void;
   onArchiveProject: (id: string) => void;
   onUnarchiveProject: (id: string) => void;
   onUnarchiveFeature: (projectId: string, featureId: string) => void;
@@ -61,129 +60,99 @@ export function ProjectSidebar({
   projects,
   activeProjectId,
   activeFeatureId,
-  onSelectProject,
   onSelectFeature,
   onAddProject,
+  onAddFeature,
   onArchiveProject,
   onUnarchiveProject,
   onUnarchiveFeature,
   onOpenProjectHome,
   onOpenFeaturePanel,
 }: ProjectSidebarProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("projects");
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() =>
+    new Set(activeProjectId ? [activeProjectId] : [])
+  );
+
+  // Auto-expand active project
+  useEffect(() => {
+    if (activeProjectId && !expandedProjects.has(activeProjectId)) {
+      setExpandedProjects(prev => new Set([...prev, activeProjectId]));
+    }
+  }, [activeProjectId]);
+
+  const toggleProjectExpanded = (projectId: string) => {
+    setExpandedProjects(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  };
 
   const activeProjects = projects.filter((p) => !p.archived);
   const archivedProjects = projects.filter((p) => p.archived);
 
-  // Flat list of all features with project info
-  const allFeatures = activeProjects.flatMap((project) =>
-    project.features
-      .filter((f) => !f.archived)
-      .map((feature) => ({ ...feature, projectId: project.id, projectName: project.name }))
-  );
-
   return (
     <div className="w-48 flex flex-col border-r border-border bg-card">
-      {/* Header with view mode toggle */}
-      <div className="p-2 border-b border-border">
-        <div className="flex bg-muted rounded-lg p-0.5">
-          <button
-            onClick={() => setViewMode("projects")}
-            className={`flex-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-              viewMode === "projects"
-                ? "bg-card text-ink shadow-sm"
-                : "text-muted-foreground hover:text-ink"
-            }`}
-          >
-            Projects
-          </button>
-          <button
-            onClick={() => setViewMode("features")}
-            className={`flex-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-              viewMode === "features"
-                ? "bg-card text-ink shadow-sm"
-                : "text-muted-foreground hover:text-ink"
-            }`}
-          >
-            Features
-          </button>
-        </div>
-      </div>
-
       <div className="flex-1 overflow-y-auto py-2">
-        {viewMode === "projects" ? (
-          // Projects view
-          activeProjects.map((project) => {
+        {activeProjects.map((project) => {
             const isActive = project.id === activeProjectId;
-            const statusCounts = getStatusCounts(project);
+            const isExpanded = expandedProjects.has(project.id);
+            const activeFeatures = project.features.filter((f) => !f.archived);
             const archivedFeatures = project.features.filter((f) => f.archived);
 
+            const hasFeatures = activeFeatures.length > 0;
+
             return (
-              <ContextMenu key={project.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    className={`group mx-2 mb-1 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                      isActive ? "bg-primary/10" : "hover:bg-card-alt"
-                    }`}
-                    onClick={() => onSelectProject(project.id)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <ProjectLogo projectPath={project.path} />
-                      <span
-                        className={`text-sm truncate ${
-                          isActive ? "text-primary font-medium" : "text-ink"
-                        }`}
-                      >
-                        {project.name.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                      </span>
+              <div key={project.id} className="mb-0.5">
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      className={`group mx-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                        isActive ? "bg-primary/10" : "hover:bg-card-alt"
+                      }`}
+                      onClick={() => hasFeatures && toggleProjectExpanded(project.id)}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <ProjectLogo projectPath={project.path} />
+                        <span
+                          className={`flex-1 text-sm truncate ${
+                            isActive ? "text-primary font-medium" : "text-ink"
+                          }`}
+                        >
+                          {project.name.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </span>
+                        <span className={`p-0.5 ${hasFeatures ? "text-muted-foreground" : "text-muted-foreground/30"}`}>
+                          {isExpanded && hasFeatures ? (
+                            <ChevronDownIcon className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronRightIcon className="w-3.5 h-3.5" />
+                          )}
+                        </span>
+                      </div>
                     </div>
-                    {/* Status indicators */}
-                    <div className="flex items-center gap-2 mt-1 ml-6">
-                      {statusCounts.running > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-blue-500">
-                          <UpdateIcon className="w-3 h-3 animate-spin" />
-                          {statusCounts.running}
-                        </span>
-                      )}
-                      {statusCounts.needsReview > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-amber-500">
-                          <ExclamationTriangleIcon className="w-3 h-3" />
-                          {statusCounts.needsReview}
-                        </span>
-                      )}
-                      {statusCounts.completed > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-green-500">
-                          <CheckCircledIcon className="w-3 h-3" />
-                          {statusCounts.completed}
-                        </span>
-                      )}
-                      {archivedFeatures.length > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                          <ArchiveIcon className="w-3 h-3" />
-                          {archivedFeatures.length}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="min-w-[160px]">
-                  <ContextMenuItem
-                    onClick={() => onOpenFeaturePanel(project.id)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <DashboardIcon className="w-3.5 h-3.5" />
-                    <span>Open Features</span>
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => onOpenProjectHome(project.id)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <HomeIcon className="w-3.5 h-3.5" />
-                    <span>Project Home</span>
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  {archivedFeatures.length > 0 && (
-                    <>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="min-w-[180px]">
+                    {/* Feature Management */}
+                    <ContextMenuLabel>Feature</ContextMenuLabel>
+                    <ContextMenuItem
+                      onClick={() => onAddFeature(project.id)}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <PlusIcon className="w-3.5 h-3.5" />
+                      <span>New Feature</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => onOpenFeaturePanel(project.id)}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <DashboardIcon className="w-3.5 h-3.5" />
+                      <span>Open Features</span>
+                    </ContextMenuItem>
+                    {archivedFeatures.length > 0 && (
                       <ContextMenuSub>
                         <ContextMenuSubTrigger className="gap-2">
                           <ArchiveIcon className="w-3.5 h-3.5" />
@@ -202,49 +171,55 @@ export function ProjectSidebar({
                           ))}
                         </ContextMenuSubContent>
                       </ContextMenuSub>
-                      <ContextMenuSeparator />
-                    </>
-                  )}
-                  <ContextMenuItem
-                    onClick={() => onArchiveProject(project.id)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <ArchiveIcon className="w-3.5 h-3.5" />
-                    <span>Archive Project</span>
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })
-        ) : (
-          // Features view - flat list
-          allFeatures.map((feature) => {
-            const isActive = feature.projectId === activeProjectId && feature.id === activeFeatureId;
-            return (
-              <div
-                key={`${feature.projectId}-${feature.id}`}
-                className={`mx-2 mb-1 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                  isActive ? "bg-primary/10" : "hover:bg-card-alt"
-                }`}
-                onClick={() => onSelectFeature(feature.projectId, feature.id)}
-              >
-                <div className="flex items-center gap-1.5">
-                  <StatusIcon status={feature.status} />
-                  <span
-                    className={`text-sm truncate ${
-                      isActive ? "text-primary font-medium" : "text-ink"
-                    }`}
-                  >
-                    {feature.name}
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground truncate block mt-0.5">
-                  {feature.projectName}
-                </span>
+                    )}
+                    <ContextMenuSeparator />
+                    {/* Project Management */}
+                    <ContextMenuLabel>Project</ContextMenuLabel>
+                    <ContextMenuItem
+                      onClick={() => onOpenProjectHome(project.id)}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <HomeIcon className="w-3.5 h-3.5" />
+                      <span>Project Home</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => onArchiveProject(project.id)}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <ArchiveIcon className="w-3.5 h-3.5" />
+                      <span>Archive Project</span>
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+                {/* Nested features - aligned with project name (after logo) */}
+                {isExpanded && activeFeatures.length > 0 && (
+                  <div className="mt-0.5">
+                    {activeFeatures
+                      .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1))
+                      .map((feature) => {
+                        const isFeatureActive = isActive && feature.id === activeFeatureId;
+                        return (
+                          <div
+                            key={feature.id}
+                            className={`flex items-center gap-1.5 ml-[30px] mr-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                              isFeatureActive
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:text-ink hover:bg-card-alt"
+                            }`}
+                            onClick={() => onSelectFeature(project.id, feature.id)}
+                          >
+                            {feature.pinned && <DrawingPinFilledIcon className="w-3 h-3 text-primary/70 flex-shrink-0" />}
+                            <StatusIcon status={feature.status} />
+                            {feature.seq > 0 && <span className="text-xs text-muted-foreground/60">#{feature.seq}</span>}
+                            <span className="text-sm truncate">{feature.name}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             );
-          })
-        )}
+          })}
       </div>
 
       <div className="p-2 border-t border-border flex gap-1">
@@ -277,28 +252,6 @@ export function ProjectSidebar({
       </div>
     </div>
   );
-}
-
-function getStatusCounts(project: WorkspaceProject) {
-  const counts = { pending: 0, running: 0, completed: 0, needsReview: 0 };
-  for (const feature of project.features) {
-    if (feature.archived) continue;
-    switch (feature.status) {
-      case "pending":
-        counts.pending++;
-        break;
-      case "running":
-        counts.running++;
-        break;
-      case "completed":
-        counts.completed++;
-        break;
-      case "needs-review":
-        counts.needsReview++;
-        break;
-    }
-  }
-  return counts;
 }
 
 function StatusIcon({ status }: { status: FeatureStatus }) {

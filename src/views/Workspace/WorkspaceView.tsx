@@ -172,20 +172,24 @@ export function WorkspaceView() {
   );
 
   // Add new feature with auto-generated name
-  const handleAddFeature = useCallback(async () => {
-    if (!activeProject || !workspace) return;
+  const handleAddFeature = useCallback(async (projectId?: string) => {
+    if (!workspace) return;
+    const targetProject = projectId
+      ? workspace.projects.find(p => p.id === projectId)
+      : activeProject;
+    if (!targetProject) return;
 
-    const counter = (activeProject.feature_counter ?? 0) + 1;
+    const counter = (targetProject.feature_counter ?? 0) + 1;
     const name = `#${counter}`;
 
     try {
       const feature = await invoke<Feature>("workspace_create_feature", {
-        projectId: activeProject.id,
+        projectId: targetProject.id,
         name,
       });
 
       const newProjects = workspace.projects.map((p) =>
-        p.id === activeProject.id
+        p.id === targetProject.id
           ? {
               ...p,
               features: [...p.features, { ...feature, seq: counter }],
@@ -197,6 +201,7 @@ export function WorkspaceView() {
       saveWorkspace({
         ...workspace,
         projects: newProjects,
+        active_project_id: targetProject.id,
       });
     } catch (err) {
       console.error("Failed to create feature:", err);
@@ -1076,7 +1081,6 @@ export function WorkspaceView() {
           projects={workspace?.projects || []}
           activeProjectId={workspace?.active_project_id}
           activeFeatureId={activeProject?.active_feature_id}
-          onSelectProject={handleSelectProject}
           onSelectFeature={(projectId, featureId) => {
             if (!workspace) return;
             const newProjects = workspace.projects.map((p) =>
@@ -1089,6 +1093,7 @@ export function WorkspaceView() {
             });
           }}
           onAddProject={handleAddProject}
+          onAddFeature={handleAddFeature}
           onArchiveProject={handleArchiveProject}
           onUnarchiveProject={handleUnarchiveProject}
           onUnarchiveFeature={handleUnarchiveFeature}
@@ -1103,14 +1108,7 @@ export function WorkspaceView() {
               {/* Feature sidebar with pinned sessions */}
               <FeatureSidebar
                 projectName={activeProject.name}
-                features={activeProject.features}
-                activeFeatureId={activeProject.active_feature_id}
-                onSelectFeature={handleSelectFeature}
-                onAddFeature={handleAddFeature}
-                onRenameFeature={handleRenameFeature}
-                onUpdateFeatureStatus={handleUpdateFeatureStatus}
-                onArchiveFeature={handleArchiveFeature}
-                onPinFeature={handlePinFeature}
+                featureName={activeFeature?.name}
                 pinnedPanels={sharedPanels}
                 onAddPinnedPanel={handleAddPinnedPanel}
                 onPanelClose={handlePanelClose}

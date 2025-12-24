@@ -1,48 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   PlusIcon,
-  CheckCircledIcon,
-  UpdateIcon,
-  ExclamationTriangleIcon,
-  TimerIcon,
-  Cross2Icon,
-  DrawingPinIcon,
   DrawingPinFilledIcon,
-  Pencil1Icon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronDownIcon,
 } from "@radix-ui/react-icons";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "../../components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../../components/ui/dialog";
 import { SessionPanel } from "../../components/PanelGrid/SessionPanel";
-import type { Feature, FeatureStatus } from "./types";
 import type { PanelState } from "../../components/PanelGrid";
 
 interface FeatureSidebarProps {
-  // Project
+  // Project & Feature
   projectName: string;
-  // Features
-  features: Feature[];
-  activeFeatureId?: string;
-  onSelectFeature: (id: string) => void;
-  onAddFeature: () => void;
-  onRenameFeature: (id: string, name: string) => void;
-  onUpdateFeatureStatus: (id: string, status: FeatureStatus, note?: string) => void;
-  onArchiveFeature: (id: string, note?: string) => void;
-  onPinFeature: (id: string, pinned: boolean) => void;
+  featureName?: string;
   // Pinned panels
   pinnedPanels: PanelState[];
   onAddPinnedPanel: () => void;
@@ -58,26 +28,9 @@ interface FeatureSidebarProps {
   onCollapsedChange: (collapsed: boolean) => void;
 }
 
-const STATUS_OPTIONS: { value: FeatureStatus; label: string; icon: React.ReactNode }[] = [
-  { value: "pending", label: "Pending", icon: <TimerIcon className="w-3.5 h-3.5 text-muted-foreground" /> },
-  { value: "running", label: "Running", icon: <UpdateIcon className="w-3.5 h-3.5 text-blue-500" /> },
-  { value: "completed", label: "Completed", icon: <CheckCircledIcon className="w-3.5 h-3.5 text-green-500" /> },
-  { value: "needs-review", label: "Needs Review", icon: <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500" /> },
-];
-
-type ArchiveAction = { type: "complete"; featureId: string } | { type: "cancel"; featureId: string };
-type RenameDialogState = { featureId: string; currentName: string } | null;
-
 export function FeatureSidebar({
   projectName,
-  features,
-  activeFeatureId,
-  onSelectFeature,
-  onAddFeature,
-  onRenameFeature,
-  onUpdateFeatureStatus,
-  onArchiveFeature,
-  onPinFeature,
+  featureName,
   pinnedPanels,
   onAddPinnedPanel,
   onPanelClose,
@@ -90,26 +43,13 @@ export function FeatureSidebar({
   collapsed,
   onCollapsedChange,
 }: FeatureSidebarProps) {
-  const [archiveAction, setArchiveAction] = useState<ArchiveAction | null>(null);
-  const [archiveNote, setArchiveNote] = useState("");
-  const [renameDialog, setRenameDialog] = useState<RenameDialogState>(null);
-  const [featureName, setFeatureName] = useState("");
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => new Set(pinnedPanels.map(p => p.id)));
-  const [featuresExpanded, setFeaturesExpanded] = useState(true);
   const [pinnedExpanded, setPinnedExpanded] = useState(true);
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem("feature-sidebar-width");
     return saved ? Number(saved) : 256;
   });
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const archiveNoteRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-focus archive note textarea
-  useEffect(() => {
-    if (archiveAction) {
-      requestAnimationFrame(() => archiveNoteRef.current?.focus());
-    }
-  }, [archiveAction]);
 
   // Persist width
   useEffect(() => {
@@ -145,11 +85,6 @@ export function FeatureSidebar({
     document.addEventListener("mouseup", handleMouseUp);
   }, [width]);
 
-  const activeFeatures = features
-    .filter((f) => !f.archived)
-    .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1));
-  const pendingFeature = archiveAction ? features.find((f) => f.id === archiveAction.featureId) : null;
-
   // Auto-expand newly pinned panels
   useEffect(() => {
     const newIds = pinnedPanels.filter(p => !expandedPanels.has(p.id)).map(p => p.id);
@@ -170,40 +105,7 @@ export function FeatureSidebar({
     });
   }, []);
 
-  const handleConfirmArchive = () => {
-    if (!archiveAction) return;
-    const note = archiveNote.trim() || undefined;
-    if (archiveAction.type === "complete") {
-      onUpdateFeatureStatus(archiveAction.featureId, "completed", note);
-    } else {
-      onArchiveFeature(archiveAction.featureId, note);
-    }
-    setArchiveAction(null);
-    setArchiveNote("");
-  };
-
-  const handleCancelDialog = () => {
-    setArchiveAction(null);
-    setArchiveNote("");
-  };
-
-  const handleOpenRenameDialog = (featureId: string, currentName: string) => {
-    setRenameDialog({ featureId, currentName });
-    setFeatureName(currentName);
-  };
-
-  const handleConfirmRename = () => {
-    const name = featureName.trim();
-    if (!name || !renameDialog) return;
-    onRenameFeature(renameDialog.featureId, name);
-    setRenameDialog(null);
-    setFeatureName("");
-  };
-
-  const handleCancelRenameDialog = () => {
-    setRenameDialog(null);
-    setFeatureName("");
-  };
+  const title = featureName ? `${projectName} - ${featureName}` : projectName;
 
   // Collapsed state
   if (collapsed) {
@@ -217,29 +119,14 @@ export function FeatureSidebar({
           <ChevronRightIcon className="w-4 h-4" />
         </button>
         <div className="flex-1 flex flex-col items-center pt-2 gap-2">
-          {activeFeatures.map((feature) => (
-            <div
-              key={feature.id}
-              className={`w-1.5 h-1.5 rounded-full cursor-pointer ${
-                feature.id === activeFeatureId ? "bg-primary" : "bg-muted-foreground/40"
-              }`}
-              title={feature.name}
-              onClick={() => onSelectFeature(feature.id)}
-            />
+          {pinnedPanels.map((panel) => (
+            <span
+              key={panel.id}
+              title={panel.sessions.find(s => s.id === panel.activeSessionId)?.title || "Pinned"}
+            >
+              <DrawingPinFilledIcon className="w-3 h-3 text-primary/70" />
+            </span>
           ))}
-          {pinnedPanels.length > 0 && (
-            <>
-              <div className="w-4 border-t border-border my-1" />
-              {pinnedPanels.map((panel) => (
-                <span
-                  key={panel.id}
-                  title={panel.sessions.find(s => s.id === panel.activeSessionId)?.title || "Pinned"}
-                >
-                  <DrawingPinFilledIcon className="w-3 h-3 text-primary/70" />
-                </span>
-              ))}
-            </>
-          )}
         </div>
       </div>
     );
@@ -248,7 +135,6 @@ export function FeatureSidebar({
   const expandedCount = pinnedPanels.filter(p => expandedPanels.has(p.id)).length;
 
   return (
-    <>
       <div
         ref={sidebarRef}
         className="h-full flex flex-col bg-canvas-alt border-r border-border min-w-0 relative"
@@ -270,87 +156,7 @@ export function FeatureSidebar({
           >
             <ChevronLeftIcon className="w-4 h-4" />
           </button>
-          <span className="flex-1 text-sm font-medium text-ink px-1 truncate capitalize">{projectName}</span>
-        </div>
-
-        {/* Features section */}
-        <div className="flex-shrink-0 flex flex-col">
-          <SectionHeader
-            title="Features"
-            count={activeFeatures.length}
-            expanded={featuresExpanded}
-            onToggle={() => setFeaturesExpanded(!featuresExpanded)}
-            onAdd={onAddFeature}
-          />
-          {featuresExpanded && <div className="max-h-48 overflow-y-auto">
-            {activeFeatures.map((feature) => {
-            const isActive = feature.id === activeFeatureId;
-            return (
-              <ContextMenu key={feature.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer transition-colors ${
-                      isActive
-                        ? "bg-primary/10 text-primary border-l-2 border-primary"
-                        : "text-muted-foreground hover:text-ink hover:bg-card-alt border-l-2 border-transparent"
-                    }`}
-                    onClick={() => onSelectFeature(feature.id)}
-                  >
-                    {feature.pinned && <DrawingPinFilledIcon className="w-3 h-3 text-primary/70 flex-shrink-0" />}
-                    <StatusIcon status={feature.status} />
-                    {feature.seq > 0 && <span className="text-xs text-muted-foreground/60 flex-shrink-0">#{feature.seq}</span>}
-                    <span className="text-sm truncate">{feature.name}</span>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="min-w-[160px]">
-                  <ContextMenuItem
-                    onClick={() => handleOpenRenameDialog(feature.id, feature.name)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <Pencil1Icon className="w-3.5 h-3.5" />
-                    <span>Rename</span>
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => onPinFeature(feature.id, !feature.pinned)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    {feature.pinned ? (
-                      <DrawingPinFilledIcon className="w-3.5 h-3.5" />
-                    ) : (
-                      <DrawingPinIcon className="w-3.5 h-3.5" />
-                    )}
-                    <span>{feature.pinned ? "Unpin" : "Pin"}</span>
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  {STATUS_OPTIONS.map((option) => (
-                    <ContextMenuItem
-                      key={option.value}
-                      onClick={() => {
-                        if (option.value === "completed") {
-                          setArchiveAction({ type: "complete", featureId: feature.id });
-                        } else {
-                          onUpdateFeatureStatus(feature.id, option.value);
-                        }
-                      }}
-                      className={`gap-2 cursor-pointer ${feature.status === option.value ? "bg-accent" : ""}`}
-                    >
-                      {option.icon}
-                      <span>{option.label}</span>
-                    </ContextMenuItem>
-                  ))}
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onClick={() => setArchiveAction({ type: "cancel", featureId: feature.id })}
-                    className="gap-2 cursor-pointer text-muted-foreground"
-                  >
-                    <Cross2Icon className="w-3.5 h-3.5" />
-                    <span>Cancel</span>
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })}
-          </div>}
+          <span className="flex-1 text-sm font-medium text-ink px-1 truncate">{title}</span>
         </div>
 
         {/* Pinned sessions */}
@@ -393,81 +199,6 @@ export function FeatureSidebar({
           </div>}
         </div>
       </div>
-
-      {/* Archive confirmation dialog */}
-      <Dialog open={archiveAction !== null} onOpenChange={(open) => !open && handleCancelDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {archiveAction?.type === "complete" ? "Complete" : "Cancel"} "{pendingFeature?.name}"
-            </DialogTitle>
-          </DialogHeader>
-          <textarea
-            ref={archiveNoteRef}
-            value={archiveNote}
-            onChange={(e) => setArchiveNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleConfirmArchive();
-              }
-            }}
-            placeholder="Add a note (optional)"
-            className="w-full h-24 px-3 py-2 text-sm border border-border rounded-lg bg-card text-ink resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-          <DialogFooter>
-            <button
-              onClick={handleCancelDialog}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
-            >
-              Back
-            </button>
-            <button
-              onClick={handleConfirmArchive}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"
-            >
-              {archiveAction?.type === "complete" ? "Complete" : "Cancel"} Feature
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename dialog */}
-      <Dialog open={renameDialog !== null} onOpenChange={(open) => !open && handleCancelRenameDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename Feature</DialogTitle>
-          </DialogHeader>
-          <input
-            type="text"
-            value={featureName}
-            onChange={(e) => setFeatureName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleConfirmRename();
-              if (e.key === "Escape") handleCancelRenameDialog();
-            }}
-            placeholder="Feature name"
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-ink focus:outline-none focus:ring-1 focus:ring-primary"
-            autoFocus
-          />
-          <DialogFooter>
-            <button
-              onClick={handleCancelRenameDialog}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmRename}
-              disabled={!featureName.trim()}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Rename
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 
@@ -511,17 +242,4 @@ function SectionHeader({
       </button>
     </div>
   );
-}
-
-function StatusIcon({ status }: { status: FeatureStatus }) {
-  switch (status) {
-    case "pending":
-      return <TimerIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />;
-    case "running":
-      return <UpdateIcon className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />;
-    case "completed":
-      return <CheckCircledIcon className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />;
-    case "needs-review":
-      return <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />;
-  }
 }
