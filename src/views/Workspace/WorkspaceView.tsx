@@ -13,6 +13,8 @@ import type { WorkspaceData, WorkspaceProject, Feature } from "./types";
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [newFeatureName, setNewFeatureName] = useState("");
+  const [isAddingFeature, setIsAddingFeature] = useState(false);
 
   // Load workspace data and reset running features (PTY sessions don't survive restarts)
   useEffect(() => {
@@ -154,17 +156,20 @@ export function WorkspaceView() {
     [workspace, saveWorkspace]
   );
 
-  // Add feature handler
-  const handleAddFeature = useCallback(async () => {
-    if (!activeProject) return;
+  // Start adding feature (show input)
+  const handleStartAddFeature = useCallback(() => {
+    setIsAddingFeature(true);
+    setNewFeatureName("");
+  }, []);
 
-    const name = prompt("Enter feature name:");
-    if (!name) return;
+  // Confirm adding feature
+  const handleConfirmAddFeature = useCallback(async () => {
+    if (!activeProject || !newFeatureName.trim()) return;
 
     try {
       const feature = await invoke<Feature>("workspace_create_feature", {
         projectId: activeProject.id,
-        name,
+        name: newFeatureName.trim(),
       });
 
       if (workspace) {
@@ -184,8 +189,17 @@ export function WorkspaceView() {
       }
     } catch (err) {
       console.error("Failed to create feature:", err);
+    } finally {
+      setIsAddingFeature(false);
+      setNewFeatureName("");
     }
-  }, [activeProject, workspace, saveWorkspace]);
+  }, [activeProject, workspace, saveWorkspace, newFeatureName]);
+
+  // Cancel adding feature
+  const handleCancelAddFeature = useCallback(() => {
+    setIsAddingFeature(false);
+    setNewFeatureName("");
+  }, []);
 
   // Remove feature handler
   const handleRemoveFeature = useCallback(
@@ -439,14 +453,19 @@ export function WorkspaceView() {
                 features={activeProject.features}
                 activeFeatureId={activeProject.active_feature_id}
                 onSelectFeature={handleSelectFeature}
-                onAddFeature={handleAddFeature}
+                onAddFeature={handleStartAddFeature}
                 onRemoveFeature={handleRemoveFeature}
+                isAddingFeature={isAddingFeature}
+                newFeatureName={newFeatureName}
+                onNewFeatureNameChange={setNewFeatureName}
+                onConfirmAddFeature={handleConfirmAddFeature}
+                onCancelAddFeature={handleCancelAddFeature}
               />
 
               {/* Panel area */}
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 h-full">
                 {activeFeature ? (
-                  <PanelGroup orientation="horizontal" id="workspace-main">
+                  <PanelGroup orientation="horizontal" id="workspace-main" className="h-full">
                     {/* Shared panels zone */}
                     {sharedPanels.length > 0 && (
                       <>
@@ -480,12 +499,41 @@ export function WorkspaceView() {
                       <p className="text-muted-foreground mb-4">
                         No features yet
                       </p>
-                      <button
-                        onClick={handleAddFeature}
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                      >
-                        Create First Feature
-                      </button>
+                      {isAddingFeature ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newFeatureName}
+                            onChange={(e) => setNewFeatureName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleConfirmAddFeature();
+                              if (e.key === "Escape") handleCancelAddFeature();
+                            }}
+                            placeholder="Feature name"
+                            className="px-3 py-2 border border-border rounded-lg bg-card text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleConfirmAddFeature}
+                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                          >
+                            Create
+                          </button>
+                          <button
+                            onClick={handleCancelAddFeature}
+                            className="px-4 py-2 text-muted-foreground hover:text-ink rounded-lg hover:bg-card-alt transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleStartAddFeature}
+                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                        >
+                          Create First Feature
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

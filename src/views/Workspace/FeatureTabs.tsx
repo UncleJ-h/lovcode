@@ -1,4 +1,4 @@
-import { PlusIcon, Cross2Icon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon } from "@radix-ui/react-icons";
+import { PlusIcon, Cross2Icon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, CheckIcon } from "@radix-ui/react-icons";
 import type { Feature, FeatureStatus } from "./types";
 
 interface FeatureTabsProps {
@@ -7,6 +7,11 @@ interface FeatureTabsProps {
   onSelectFeature: (id: string) => void;
   onAddFeature: () => void;
   onRemoveFeature: (id: string) => void;
+  isAddingFeature?: boolean;
+  newFeatureName?: string;
+  onNewFeatureNameChange?: (name: string) => void;
+  onConfirmAddFeature?: () => void;
+  onCancelAddFeature?: () => void;
 }
 
 export function FeatureTabs({
@@ -15,6 +20,11 @@ export function FeatureTabs({
   onSelectFeature,
   onAddFeature,
   onRemoveFeature,
+  isAddingFeature,
+  newFeatureName,
+  onNewFeatureNameChange,
+  onConfirmAddFeature,
+  onCancelAddFeature,
 }: FeatureTabsProps) {
   return (
     <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-card overflow-x-auto">
@@ -45,13 +55,44 @@ export function FeatureTabs({
           </div>
         );
       })}
-      <button
-        onClick={onAddFeature}
-        className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors shrink-0"
-        title="New feature"
-      >
-        <PlusIcon className="w-4 h-4" />
-      </button>
+      {isAddingFeature ? (
+        <div className="flex items-center gap-1 shrink-0">
+          <input
+            type="text"
+            value={newFeatureName || ""}
+            onChange={(e) => onNewFeatureNameChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onConfirmAddFeature?.();
+              if (e.key === "Escape") onCancelAddFeature?.();
+            }}
+            placeholder="Feature name"
+            className="w-32 px-2 py-1 text-sm border border-border rounded bg-card text-ink focus:outline-none focus:ring-1 focus:ring-primary"
+            autoFocus
+          />
+          <button
+            onClick={onConfirmAddFeature}
+            className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors"
+            title="Confirm"
+          >
+            <CheckIcon className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onCancelAddFeature}
+            className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
+            title="Cancel"
+          >
+            <Cross2Icon className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={onAddFeature}
+          className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors shrink-0"
+          title="New feature"
+        >
+          <PlusIcon className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 }

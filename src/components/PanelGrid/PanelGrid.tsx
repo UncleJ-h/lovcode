@@ -50,7 +50,7 @@ export function PanelGrid({
 
   if (panels.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-canvas">
+      <div className="h-full flex items-center justify-center bg-canvas">
         <div className="text-center">
           <p className="text-muted-foreground mb-4">No terminals open</p>
           <button
