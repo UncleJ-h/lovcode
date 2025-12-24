@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { motion } from "framer-motion";
 
 import { ProjectSidebar } from "./ProjectSidebar";
-import { FeatureTabs } from "./FeatureTabs";
-import { PanelGrid, SharedPanelZone } from "../../components/PanelGrid";
+import { FeatureSidebar } from "./FeatureSidebar";
+import { PanelGrid } from "../../components/PanelGrid";
 import type { PanelState } from "../../components/PanelGrid";
 import { disposeTerminal } from "../../components/Terminal";
 import {
@@ -403,6 +402,36 @@ export function WorkspaceView() {
     },
     [activeProject, activeFeature, workspace, saveWorkspace]
   );
+
+  // Add pinned panel handler
+  const handleAddPinnedPanel = useCallback(() => {
+    if (!activeProject || !workspace) return;
+
+    const panelId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const ptyId = crypto.randomUUID();
+
+    const newPanel: StoredPanelState = {
+      id: panelId,
+      sessions: [{ id: sessionId, pty_id: ptyId, title: "Pinned" }],
+      active_session_id: sessionId,
+      is_shared: true,
+      cwd: activeProject.path,
+    };
+
+    const newProjects = workspace.projects.map((p) => {
+      if (p.id !== activeProject.id) return p;
+      return {
+        ...p,
+        shared_panels: [...(p.shared_panels || []), newPanel],
+      };
+    });
+
+    saveWorkspace({
+      ...workspace,
+      projects: newProjects,
+    });
+  }, [activeProject, workspace, saveWorkspace]);
 
   // Close panel handler
   const handlePanelClose = useCallback(
@@ -911,11 +940,12 @@ export function WorkspaceView() {
         />
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex min-w-0">
           {activeProject ? (
             <>
-              {/* Feature tabs */}
-              <FeatureTabs
+              {/* Feature sidebar with pinned sessions */}
+              <FeatureSidebar
+                projectName={activeProject.name}
                 features={activeProject.features}
                 activeFeatureId={activeProject.active_feature_id}
                 onSelectFeature={handleSelectFeature}
@@ -924,65 +954,50 @@ export function WorkspaceView() {
                 onUpdateFeatureStatus={handleUpdateFeatureStatus}
                 onArchiveFeature={handleArchiveFeature}
                 onPinFeature={handlePinFeature}
+                pinnedPanels={sharedPanels}
+                onAddPinnedPanel={handleAddPinnedPanel}
+                onPanelClose={handlePanelClose}
+                onPanelToggleShared={handlePanelToggleShared}
+                onPanelReload={handlePanelReload}
+                onSessionAdd={handleSessionAdd}
+                onSessionClose={handleSessionClose}
+                onSessionSelect={handleSessionSelect}
+                onSessionTitleChange={handleSessionTitleChange}
+                collapsed={sharedPanelCollapsed}
+                onCollapsedChange={setSharedPanelCollapsed}
               />
 
-              {/* Panel area */}
-              <div className="flex-1 min-h-0 h-full">
+              {/* Feature panels area */}
+              <div className="flex-1 min-w-0 h-full">
                 {activeFeature ? (
-                  <div className="flex h-full">
-                    {/* Shared panels zone with smooth animation */}
-                    {sharedPanels.length > 0 && (
-                      <motion.div
-                        initial={false}
-                        animate={{ width: sharedPanelCollapsed ? 32 : 300 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        className="h-full flex-shrink-0 overflow-hidden"
-                      >
-                        <SharedPanelZone
-                          panels={sharedPanels}
-                          collapsed={sharedPanelCollapsed}
-                          onCollapsedChange={setSharedPanelCollapsed}
-                          onPanelClose={handlePanelClose}
-                          onPanelToggleShared={handlePanelToggleShared}
-                          onPanelReload={handlePanelReload}
-                          onSessionAdd={handleSessionAdd}
-                          onSessionClose={handleSessionClose}
-                          onSessionSelect={handleSessionSelect}
-                          onSessionTitleChange={handleSessionTitleChange}
-                        />
-                      </motion.div>
-                    )}
-
-                    {/* Feature panels - render ALL features but hide inactive ones to keep PTY alive */}
-                    <div className="flex-1 min-w-0 relative h-full">
-                      {activeProject?.features.map((feature) => {
-                        const isActive = feature.id === activeFeature.id;
-                        const featurePanels = allFeaturePanels.get(feature.id) || [];
-                        // Only render if active OR has panels (to keep PTY alive)
-                        if (!isActive && featurePanels.length === 0) return null;
-                        return (
-                          <div
-                            key={feature.id}
-                            className={`absolute inset-0 ${
-                              isActive ? "" : "invisible pointer-events-none"
-                            }`}
-                          >
-                            <PanelGrid
-                              panels={featurePanels}
-                              onPanelClose={handlePanelClose}
-                              onPanelAdd={handlePanelAdd}
-                              onPanelToggleShared={handlePanelToggleShared}
-                              onPanelReload={handlePanelReload}
-                              onSessionAdd={handleSessionAdd}
-                              onSessionClose={handleSessionClose}
-                              onSessionSelect={handleSessionSelect}
-                              onSessionTitleChange={handleSessionTitleChange}
-                              direction={feature.layout_direction || "horizontal"}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="h-full relative">
+                    {/* Render ALL features but hide inactive ones to keep PTY alive */}
+                    {activeProject?.features.map((feature) => {
+                      const isActive = feature.id === activeFeature.id;
+                      const featurePanels = allFeaturePanels.get(feature.id) || [];
+                      if (!isActive && featurePanels.length === 0) return null;
+                      return (
+                        <div
+                          key={feature.id}
+                          className={`absolute inset-0 ${
+                            isActive ? "" : "invisible pointer-events-none"
+                          }`}
+                        >
+                          <PanelGrid
+                            panels={featurePanels}
+                            onPanelClose={handlePanelClose}
+                            onPanelAdd={handlePanelAdd}
+                            onPanelToggleShared={handlePanelToggleShared}
+                            onPanelReload={handlePanelReload}
+                            onSessionAdd={handleSessionAdd}
+                            onSessionClose={handleSessionClose}
+                            onSessionSelect={handleSessionSelect}
+                            onSessionTitleChange={handleSessionTitleChange}
+                            direction={feature.layout_direction || "horizontal"}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="h-full flex items-center justify-center">

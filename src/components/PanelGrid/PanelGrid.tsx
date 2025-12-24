@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
 import { TerminalPane } from "../Terminal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import {
@@ -333,7 +333,25 @@ export function SharedPanelZone({
 
   return (
     <div className="h-full w-full min-w-0 flex flex-col overflow-hidden">
-      {panels.map((panel) => {
+      {/* Header - aligned with FeatureTabs height */}
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-border bg-card flex-shrink-0">
+        <button
+          onClick={() => onCollapsedChange(true)}
+          className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
+          title="Collapse pinned panels"
+        >
+          <ChevronLeftIcon className="w-4 h-4" />
+        </button>
+        <DrawingPinFilledIcon className="w-3.5 h-3.5 text-primary/70" />
+        <span className="text-sm text-muted-foreground">
+          Pinned
+          {panels.length > 1 && <span className="ml-1 text-xs">({panels.length})</span>}
+        </span>
+      </div>
+
+      {/* Panels */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {panels.map((panel) => {
         const isExpanded = expandedPanels.has(panel.id);
         return (
           <div
@@ -348,14 +366,7 @@ export function SharedPanelZone({
               className="flex flex-col h-full gap-0"
             >
               <div className="flex items-center bg-canvas-alt border-b border-border flex-shrink-0">
-                <button
-                  onClick={() => onCollapsedChange(true)}
-                  className="p-1 ml-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
-                  title="Collapse sidebar"
-                >
-                  <ChevronLeftIcon className="w-3.5 h-3.5" />
-                </button>
-                <TabsList className="flex-1 h-8 p-0 rounded-none justify-start gap-0">
+                <TabsList className="flex-1 h-8 p-0 ml-1 rounded-none justify-start gap-0">
                   {panel.sessions.map((session) => (
                     <TabsTrigger
                       key={session.id}
@@ -450,7 +461,8 @@ export function SharedPanelZone({
             </Tabs>
           </div>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }

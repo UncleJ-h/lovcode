@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type React from "react";
 import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, Cross2Icon, DrawingPinIcon, DrawingPinFilledIcon, Pencil1Icon } from "@radix-ui/react-icons";
 import {
@@ -53,6 +53,14 @@ export function FeatureTabs({
   const [archiveNote, setArchiveNote] = useState("");
   const [nameDialog, setNameDialog] = useState<NameDialogState>(null);
   const [featureName, setFeatureName] = useState("");
+  const archiveNoteRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (archiveAction) {
+      // Delay focus to ensure dialog is rendered
+      requestAnimationFrame(() => archiveNoteRef.current?.focus());
+    }
+  }, [archiveAction]);
 
   const activeFeatures = features
     .filter((f) => !f.archived)
@@ -190,6 +198,7 @@ export function FeatureTabs({
             </DialogTitle>
           </DialogHeader>
           <textarea
+            ref={archiveNoteRef}
             value={archiveNote}
             onChange={(e) => setArchiveNote(e.target.value)}
             onKeyDown={(e) => {
@@ -200,7 +209,6 @@ export function FeatureTabs({
             }}
             placeholder="Add a note (optional)"
             className="w-full h-24 px-3 py-2 text-sm border border-border rounded-lg bg-card text-ink resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-            autoFocus
           />
           <DialogFooter>
             <button
