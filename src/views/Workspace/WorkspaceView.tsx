@@ -9,6 +9,7 @@ import { ProjectSidebar } from "./ProjectSidebar";
 import { FeatureTabs } from "./FeatureTabs";
 import { PanelGrid, SharedPanelZone } from "../../components/PanelGrid";
 import type { PanelState } from "../../components/PanelGrid";
+import { disposeTerminal } from "../../components/Terminal";
 import {
   Dialog,
   DialogContent,
@@ -425,8 +426,9 @@ export function WorkspaceView() {
         }
       }
 
-      // Kill all PTY sessions
+      // Kill all PTY sessions and dispose terminal instances
       for (const ptyId of ptyIdsToKill) {
+        disposeTerminal(ptyId);
         invoke("pty_kill", { id: ptyId }).catch(console.error);
       }
 
@@ -532,6 +534,7 @@ export function WorkspaceView() {
         }
       }
       if (oldPtyId) {
+        disposeTerminal(oldPtyId);
         invoke("pty_kill", { id: oldPtyId }).catch(console.error);
       }
 
@@ -618,19 +621,25 @@ export function WorkspaceView() {
     (panelId: string, sessionId: string) => {
       if (!activeProject || !workspace) return;
 
-      // Find and kill the PTY session
+      // Find and kill the PTY session, dispose terminal instance
       for (const feature of activeProject.features) {
         const panel = feature.panels.find((p) => p.id === panelId);
         if (panel) {
           const session = (panel.sessions || []).find((s) => s.id === sessionId);
-          if (session) invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+          if (session) {
+            disposeTerminal(session.pty_id);
+            invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+          }
           break;
         }
       }
       const sharedPanel = (activeProject.shared_panels || []).find((p) => p.id === panelId);
       if (sharedPanel) {
         const session = (sharedPanel.sessions || []).find((s) => s.id === sessionId);
-        if (session) invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+        if (session) {
+          disposeTerminal(session.pty_id);
+          invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+        }
       }
 
       const newProjects = workspace.projects.map((p) => {
