@@ -146,7 +146,11 @@ export function PanelGrid({
                         value={session.id}
                         className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-card data-[state=active]:shadow-none group"
                       >
-                        <span className="truncate max-w-20 pr-4">{session.title || "Terminal"}</span>
+                        <EditableTabTitle
+                          title={session.title}
+                          fallback="Terminal"
+                          onRename={(t) => onSessionTitleChange(panel.id, session.id, t)}
+                        />
                         {panel.sessions.length > 1 && (
                           <button
                             onClick={(e) => {
@@ -287,7 +291,11 @@ export function SharedPanelZone({
                     value={session.id}
                     className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-card data-[state=active]:shadow-none group"
                   >
-                    <span className="truncate max-w-20 pr-4">{session.title || "Shared"}</span>
+                    <EditableTabTitle
+                      title={session.title}
+                      fallback="Shared"
+                      onRename={(t) => onSessionTitleChange(panel.id, session.id, t)}
+                    />
                     {panel.sessions.length > 1 && (
                       <button
                         onClick={(e) => {
