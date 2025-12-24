@@ -8,7 +8,7 @@ import { FeatureSidebar } from "./FeatureSidebar";
 import { PanelGrid } from "../../components/PanelGrid";
 import type { PanelState } from "../../components/PanelGrid";
 import { disposeTerminal } from "../../components/Terminal";
-import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelState as StoredPanelState, SessionState as StoredSessionState } from "./types";
+import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelState as StoredPanelState, SessionState as StoredSessionState, LayoutNode } from "./types";
 
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
@@ -356,9 +356,49 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
-  // Add panel handler
-  const handlePanelAdd = useCallback(
-    (direction: "horizontal" | "vertical") => {
+  // Layout tree utilities
+  const splitLayoutNode = useCallback(
+    (node: LayoutNode, targetPanelId: string, direction: "horizontal" | "vertical", newPanelId: string): LayoutNode => {
+      if (node.type === "panel") {
+        if (node.panelId === targetPanelId) {
+          // Found the target - replace with split node
+          return {
+            type: "split",
+            direction,
+            first: node,
+            second: { type: "panel", panelId: newPanelId },
+          };
+        }
+        return node;
+      }
+      // Recurse into split node
+      return {
+        ...node,
+        first: splitLayoutNode(node.first, targetPanelId, direction, newPanelId),
+        second: splitLayoutNode(node.second, targetPanelId, direction, newPanelId),
+      };
+    },
+    []
+  );
+
+  const removeFromLayout = useCallback(
+    (node: LayoutNode, targetPanelId: string): LayoutNode | null => {
+      if (node.type === "panel") {
+        return node.panelId === targetPanelId ? null : node;
+      }
+      const first = removeFromLayout(node.first, targetPanelId);
+      const second = removeFromLayout(node.second, targetPanelId);
+      if (!first && !second) return null;
+      if (!first) return second;
+      if (!second) return first;
+      return { ...node, first, second };
+    },
+    []
+  );
+
+  // Split panel handler (tmux-style)
+  const handlePanelSplit = useCallback(
+    (targetPanelId: string, direction: "horizontal" | "vertical") => {
       if (!activeProject || !activeFeature || !workspace) return;
 
       const panelId = crypto.randomUUID();
@@ -367,7 +407,7 @@ export function WorkspaceView() {
 
       const newPanel: StoredPanelState = {
         id: panelId,
-        sessions: [{ id: sessionId, pty_id: ptyId, title: `${activeFeature.name} - 1` }],
+        sessions: [{ id: sessionId, pty_id: ptyId, title: `${activeFeature.name} - ${activeFeature.panels.length + 1}` }],
         active_session_id: sessionId,
         is_shared: false,
         cwd: activeProject.path,
@@ -379,10 +419,37 @@ export function WorkspaceView() {
           ...p,
           features: p.features.map((f) => {
             if (f.id !== activeFeature.id) return f;
+
+            // Get or create layout tree
+            let currentLayout = f.layout;
+            if (!currentLayout) {
+              // Migrate from flat panels to tree layout
+              if (f.panels.length === 0) {
+                currentLayout = { type: "panel", panelId: targetPanelId };
+              } else if (f.panels.length === 1) {
+                currentLayout = { type: "panel", panelId: f.panels[0].id };
+              } else {
+                // Build initial layout from existing panels using legacy direction
+                const dir = f.layout_direction || "horizontal";
+                currentLayout = f.panels.slice(1).reduce<LayoutNode>(
+                  (acc, panel) => ({
+                    type: "split",
+                    direction: dir,
+                    first: acc,
+                    second: { type: "panel", panelId: panel.id },
+                  }),
+                  { type: "panel", panelId: f.panels[0].id }
+                );
+              }
+            }
+
+            // Split the target panel
+            const newLayout = splitLayoutNode(currentLayout, targetPanelId, direction, panelId);
+
             return {
               ...f,
               panels: [...f.panels, newPanel],
-              layout_direction: direction,
+              layout: newLayout,
             };
           }),
         };
@@ -393,8 +460,46 @@ export function WorkspaceView() {
         projects: newProjects,
       });
     },
-    [activeProject, activeFeature, workspace, saveWorkspace]
+    [activeProject, activeFeature, workspace, saveWorkspace, splitLayoutNode]
   );
+
+  // Create initial panel (when feature has no panels)
+  const handleInitialPanelCreate = useCallback(() => {
+    if (!activeProject || !activeFeature || !workspace) return;
+
+    const panelId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const ptyId = crypto.randomUUID();
+
+    const newPanel: StoredPanelState = {
+      id: panelId,
+      sessions: [{ id: sessionId, pty_id: ptyId, title: `${activeFeature.name} - 1` }],
+      active_session_id: sessionId,
+      is_shared: false,
+      cwd: activeProject.path,
+    };
+
+    const newProjects = workspace.projects.map((p) => {
+      if (p.id !== activeProject.id) return p;
+      return {
+        ...p,
+        features: p.features.map((f) => {
+          if (f.id !== activeFeature.id) return f;
+          const layout: LayoutNode = { type: "panel", panelId };
+          return {
+            ...f,
+            panels: [newPanel],
+            layout,
+          };
+        }),
+      };
+    });
+
+    saveWorkspace({
+      ...workspace,
+      projects: newProjects,
+    });
+  }, [activeProject, activeFeature, workspace, saveWorkspace]);
 
   // Add pinned panel handler
   const handleAddPinnedPanel = useCallback(() => {
@@ -457,10 +562,16 @@ export function WorkspaceView() {
         if (p.id !== activeProject.id) return p;
         return {
           ...p,
-          features: p.features.map((f) => ({
-            ...f,
-            panels: f.panels.filter((panel) => panel.id !== panelId),
-          })),
+          features: p.features.map((f) => {
+            const newPanels = f.panels.filter((panel) => panel.id !== panelId);
+            // Update layout tree
+            const newLayout = f.layout ? removeFromLayout(f.layout, panelId) : undefined;
+            return {
+              ...f,
+              panels: newPanels,
+              layout: newLayout ?? undefined,
+            };
+          }),
           shared_panels: (p.shared_panels || []).filter((panel) => panel.id !== panelId),
         };
       });
@@ -470,7 +581,7 @@ export function WorkspaceView() {
         projects: newProjects,
       });
     },
-    [activeProject, workspace, saveWorkspace]
+    [activeProject, workspace, saveWorkspace, removeFromLayout]
   );
 
   // Toggle panel shared handler
@@ -990,14 +1101,16 @@ export function WorkspaceView() {
                         >
                           <PanelGrid
                             panels={featurePanels}
+                            layout={feature.layout}
                             onPanelClose={handlePanelClose}
-                            onPanelAdd={handlePanelAdd}
+                            onPanelSplit={handlePanelSplit}
                             onPanelToggleShared={handlePanelToggleShared}
                             onPanelReload={handlePanelReload}
                             onSessionAdd={handleSessionAdd}
                             onSessionClose={handleSessionClose}
                             onSessionSelect={handleSessionSelect}
                             onSessionTitleChange={handleSessionTitleChange}
+                            onInitialPanelCreate={handleInitialPanelCreate}
                             direction={feature.layout_direction || "horizontal"}
                           />
                         </div>

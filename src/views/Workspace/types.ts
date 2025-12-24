@@ -18,6 +18,11 @@ export interface PanelState {
   cwd: string;
 }
 
+/** Layout tree node - either a panel leaf or a split container */
+export type LayoutNode =
+  | { type: "panel"; panelId: string }
+  | { type: "split"; direction: "horizontal" | "vertical"; first: LayoutNode; second: LayoutNode };
+
 /** Feature within a project */
 export interface Feature {
   id: string;
@@ -29,7 +34,10 @@ export interface Feature {
   git_branch?: string;
   chat_session_id?: string;
   panels: PanelState[];
+  /** @deprecated Use layout instead */
   layout_direction?: "horizontal" | "vertical";
+  /** Tree-based layout for tmux-style splits */
+  layout?: LayoutNode;
   created_at: number;
 }
 

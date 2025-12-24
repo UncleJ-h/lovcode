@@ -57,7 +57,7 @@ function EditableTabTitle({
 
   return (
     <span
-      className="truncate max-w-20 pr-4"
+      className="truncate min-w-0"
       onDoubleClick={(e) => { e.stopPropagation(); setValue(title); setEditing(true); }}
     >
       {title || fallback}
@@ -75,7 +75,8 @@ export interface SessionPanelProps {
   onToggleExpand?: () => void;
   /** Show split horizontal/vertical actions in menu */
   showSplitActions?: boolean;
-  onPanelAdd?: (direction: "horizontal" | "vertical") => void;
+  /** Split this panel (tmux-style) */
+  onPanelSplit?: (direction: "horizontal" | "vertical") => void;
   onPanelClose: () => void;
   onPanelToggleShared: () => void;
   onPanelReload: () => void;
@@ -95,7 +96,7 @@ export function SessionPanel({
   isExpanded = true,
   onToggleExpand,
   showSplitActions = false,
-  onPanelAdd,
+  onPanelSplit,
   onPanelClose,
   onPanelToggleShared,
   onPanelReload,
@@ -194,13 +195,13 @@ export function SessionPanel({
                   </>
                 )}
               </DropdownMenuItem>
-              {showSplitActions && onPanelAdd && (
+              {showSplitActions && onPanelSplit && (
                 <>
-                  <DropdownMenuItem onClick={() => onPanelAdd("horizontal")}>
+                  <DropdownMenuItem onClick={() => onPanelSplit("horizontal")}>
                     <ColumnsIcon className="w-4 h-4 mr-2" />
                     Split horizontal
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onPanelAdd("vertical")}>
+                  <DropdownMenuItem onClick={() => onPanelSplit("vertical")}>
                     <RowsIcon className="w-4 h-4 mr-2" />
                     Split vertical
                   </DropdownMenuItem>

@@ -3,6 +3,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import { ChevronLeftIcon, ChevronRightIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
 import { SessionPanel } from "./SessionPanel";
+import type { LayoutNode } from "../../views/Workspace/types";
 
 export interface SessionState {
   id: string;
@@ -21,21 +22,108 @@ export interface PanelState {
 
 export interface PanelGridProps {
   panels: PanelState[];
+  layout?: LayoutNode;
   onPanelClose: (id: string) => void;
-  onPanelAdd: (direction: "horizontal" | "vertical") => void;
+  /** Split a panel in the given direction (tmux-style) */
+  onPanelSplit: (panelId: string, direction: "horizontal" | "vertical") => void;
   onPanelToggleShared: (id: string) => void;
   onPanelReload: (id: string) => void;
   onSessionAdd: (panelId: string) => void;
   onSessionClose: (panelId: string, sessionId: string) => void;
   onSessionSelect: (panelId: string, sessionId: string) => void;
   onSessionTitleChange: (panelId: string, sessionId: string, title: string) => void;
+  /** @deprecated Use layout prop instead */
   direction?: "horizontal" | "vertical";
+  /** Called when no panels exist and one should be created */
+  onInitialPanelCreate?: () => void;
+}
+
+/** Recursively render layout tree */
+function LayoutRenderer({
+  node,
+  panels,
+  onPanelClose,
+  onPanelSplit,
+  onPanelToggleShared,
+  onPanelReload,
+  onSessionAdd,
+  onSessionClose,
+  onSessionSelect,
+  onSessionTitleChange,
+}: {
+  node: LayoutNode;
+  panels: PanelState[];
+  onPanelClose: (id: string) => void;
+  onPanelSplit: (panelId: string, direction: "horizontal" | "vertical") => void;
+  onPanelToggleShared: (id: string) => void;
+  onPanelReload: (id: string) => void;
+  onSessionAdd: (panelId: string) => void;
+  onSessionClose: (panelId: string, sessionId: string) => void;
+  onSessionSelect: (panelId: string, sessionId: string) => void;
+  onSessionTitleChange: (panelId: string, sessionId: string, title: string) => void;
+}) {
+  if (node.type === "panel") {
+    const panel = panels.find((p) => p.id === node.panelId);
+    if (!panel) return null;
+
+    return (
+      <div className="h-full w-full flex flex-col bg-terminal border border-border overflow-hidden">
+        <SessionPanel
+          panel={panel}
+          showSplitActions
+          onPanelSplit={(dir) => onPanelSplit(panel.id, dir)}
+          onPanelClose={() => onPanelClose(panel.id)}
+          onPanelToggleShared={() => onPanelToggleShared(panel.id)}
+          onPanelReload={() => onPanelReload(panel.id)}
+          onSessionAdd={() => onSessionAdd(panel.id)}
+          onSessionClose={(sessionId) => onSessionClose(panel.id, sessionId)}
+          onSessionSelect={(sessionId) => onSessionSelect(panel.id, sessionId)}
+          onSessionTitleChange={(sessionId, title) => onSessionTitleChange(panel.id, sessionId, title)}
+        />
+      </div>
+    );
+  }
+
+  // Split node - render children in Allotment
+  return (
+    <Allotment vertical={node.direction === "vertical"} className="h-full">
+      <Allotment.Pane minSize={100}>
+        <LayoutRenderer
+          node={node.first}
+          panels={panels}
+          onPanelClose={onPanelClose}
+          onPanelSplit={onPanelSplit}
+          onPanelToggleShared={onPanelToggleShared}
+          onPanelReload={onPanelReload}
+          onSessionAdd={onSessionAdd}
+          onSessionClose={onSessionClose}
+          onSessionSelect={onSessionSelect}
+          onSessionTitleChange={onSessionTitleChange}
+        />
+      </Allotment.Pane>
+      <Allotment.Pane minSize={100}>
+        <LayoutRenderer
+          node={node.second}
+          panels={panels}
+          onPanelClose={onPanelClose}
+          onPanelSplit={onPanelSplit}
+          onPanelToggleShared={onPanelToggleShared}
+          onPanelReload={onPanelReload}
+          onSessionAdd={onSessionAdd}
+          onSessionClose={onSessionClose}
+          onSessionSelect={onSessionSelect}
+          onSessionTitleChange={onSessionTitleChange}
+        />
+      </Allotment.Pane>
+    </Allotment>
+  );
 }
 
 export function PanelGrid({
   panels,
+  layout,
   onPanelClose,
-  onPanelAdd,
+  onPanelSplit,
   onPanelToggleShared,
   onPanelReload,
   onSessionAdd,
@@ -43,30 +131,49 @@ export function PanelGrid({
   onSessionSelect,
   onSessionTitleChange,
   direction = "horizontal",
+  onInitialPanelCreate,
 }: PanelGridProps) {
   // Auto-create terminal when empty
   useEffect(() => {
-    if (panels.length === 0) {
-      onPanelAdd("horizontal");
+    if (panels.length === 0 && onInitialPanelCreate) {
+      onInitialPanelCreate();
     }
-  }, [panels.length, onPanelAdd]);
+  }, [panels.length, onInitialPanelCreate]);
 
   if (panels.length === 0) {
     return null;
   }
 
+  // Use tree layout if available
+  if (layout) {
+    return (
+      <div className="h-full w-full">
+        <LayoutRenderer
+          node={layout}
+          panels={panels}
+          onPanelClose={onPanelClose}
+          onPanelSplit={onPanelSplit}
+          onPanelToggleShared={onPanelToggleShared}
+          onPanelReload={onPanelReload}
+          onSessionAdd={onSessionAdd}
+          onSessionClose={onSessionClose}
+          onSessionSelect={onSessionSelect}
+          onSessionTitleChange={onSessionTitleChange}
+        />
+      </div>
+    );
+  }
+
+  // Legacy flat layout (backwards compatibility)
   return (
-    <Allotment
-      vertical={direction === "vertical"}
-      className="h-full"
-    >
+    <Allotment vertical={direction === "vertical"} className="h-full">
       {panels.map((panel) => (
         <Allotment.Pane key={panel.id} minSize={150}>
           <div className="h-full flex flex-col bg-terminal border border-border overflow-hidden">
             <SessionPanel
               panel={panel}
               showSplitActions
-              onPanelAdd={onPanelAdd}
+              onPanelSplit={(dir) => onPanelSplit(panel.id, dir)}
               onPanelClose={() => onPanelClose(panel.id)}
               onPanelToggleShared={() => onPanelToggleShared(panel.id)}
               onPanelReload={() => onPanelReload(panel.id)}
