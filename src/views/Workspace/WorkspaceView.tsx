@@ -375,7 +375,7 @@ export function WorkspaceView() {
 
       const newPanel: StoredPanelState = {
         id: panelId,
-        sessions: [{ id: sessionId, pty_id: ptyId, title: activeFeature.name }],
+        sessions: [{ id: sessionId, pty_id: ptyId, title: `${activeFeature.name} - 1` }],
         active_session_id: sessionId,
         is_shared: false,
         cwd: activeProject.path,
@@ -468,30 +468,77 @@ export function WorkspaceView() {
           const newSharedPanels = sharedPanels.filter((_, i) => i !== sharedIndex);
           const newFeatures = p.features.map((f) => {
             if (f.id !== p.active_feature_id) return f;
+            // If feature has existing panels, merge sessions into the first one
+            if (f.panels.length > 0) {
+              const [firstPanel, ...restPanels] = f.panels;
+              return {
+                ...f,
+                panels: [
+                  {
+                    ...firstPanel,
+                    sessions: [...firstPanel.sessions, ...panel.sessions],
+                    active_session_id: panel.sessions[0]?.id ?? firstPanel.active_session_id,
+                  },
+                  ...restPanels,
+                ],
+              };
+            }
+            // Otherwise create new panel
             return {
               ...f,
-              panels: [...f.panels, { ...panel, is_shared: false }],
+              panels: [{ ...panel, is_shared: false }],
             };
           });
           return { ...p, shared_panels: newSharedPanels, features: newFeatures };
         }
 
-        // Check if panel is in a feature
+        // Check if panel is in a feature - only pin active session, not entire panel
         for (const feature of p.features) {
           const panelIndex = feature.panels.findIndex((panel) => panel.id === panelId);
           if (panelIndex !== -1) {
             const panel = feature.panels[panelIndex];
+            const activeSessionId = panel.active_session_id;
+            const activeSession = panel.sessions.find((s) => s.id === activeSessionId) || panel.sessions[0];
+
+            if (!activeSession) return p;
+
+            // Create new shared panel with only the active session
+            const newSharedPanel = {
+              id: crypto.randomUUID(),
+              cwd: panel.cwd,
+              sessions: [activeSession],
+              active_session_id: activeSession.id,
+              is_shared: true,
+            };
+
             const newFeatures = p.features.map((f) => {
               if (f.id !== feature.id) return f;
+              const remainingSessions = panel.sessions.filter((s) => s.id !== activeSession.id);
+              // If no sessions left, remove the panel
+              if (remainingSessions.length === 0) {
+                return {
+                  ...f,
+                  panels: f.panels.filter((_, i) => i !== panelIndex),
+                };
+              }
+              // Otherwise keep panel with remaining sessions
               return {
                 ...f,
-                panels: f.panels.filter((_, i) => i !== panelIndex),
+                panels: f.panels.map((pl, i) =>
+                  i !== panelIndex
+                    ? pl
+                    : {
+                        ...pl,
+                        sessions: remainingSessions,
+                        active_session_id: remainingSessions[0].id,
+                      }
+                ),
               };
             });
             return {
               ...p,
               features: newFeatures,
-              shared_panels: [...p.shared_panels, { ...panel, is_shared: true }],
+              shared_panels: [...p.shared_panels, newSharedPanel],
             };
           }
         }
@@ -582,10 +629,27 @@ export function WorkspaceView() {
     (panelId: string) => {
       if (!activeProject || !workspace) return;
 
+      // Find the target panel to get existing session count
+      let existingCount = 0;
+      for (const feature of activeProject.features) {
+        const panel = feature.panels.find((p) => p.id === panelId);
+        if (panel) {
+          existingCount = panel.sessions?.length || 0;
+          break;
+        }
+      }
+      if (existingCount === 0) {
+        const sharedPanel = (activeProject.shared_panels || []).find((p) => p.id === panelId);
+        if (sharedPanel) {
+          existingCount = sharedPanel.sessions?.length || 0;
+        }
+      }
+
       const sessionId = crypto.randomUUID();
       const ptyId = crypto.randomUUID();
-      const defaultTitle = activeFeature?.name || "Terminal";
-      const newSession: StoredSessionState = { id: sessionId, pty_id: ptyId, title: defaultTitle };
+      const baseTitle = activeFeature?.name || "Terminal";
+      const title = `${baseTitle} - ${existingCount + 1}`;
+      const newSession: StoredSessionState = { id: sessionId, pty_id: ptyId, title };
 
       const newProjects = workspace.projects.map((p) => {
         if (p.id !== activeProject.id) return p;

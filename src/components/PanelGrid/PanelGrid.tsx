@@ -272,6 +272,15 @@ export function SharedPanelZone({
   // Track which panels are expanded (by id)
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => new Set(panels.map(p => p.id)));
 
+  // Auto-expand newly pinned panels
+  useEffect(() => {
+    const currentIds = new Set(panels.map(p => p.id));
+    const newIds = panels.filter(p => !expandedPanels.has(p.id)).map(p => p.id);
+    if (newIds.length > 0) {
+      setExpandedPanels(prev => new Set([...prev, ...newIds]));
+    }
+  }, [panels]);
+
   const togglePanelExpanded = useCallback((panelId: string) => {
     setExpandedPanels(prev => {
       const next = new Set(prev);

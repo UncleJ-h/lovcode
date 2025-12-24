@@ -192,6 +192,12 @@ export function FeatureTabs({
           <textarea
             value={archiveNote}
             onChange={(e) => setArchiveNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleConfirmArchive();
+              }
+            }}
             placeholder="Add a note (optional)"
             className="w-full h-24 px-3 py-2 text-sm border border-border rounded-lg bg-card text-ink resize-none focus:outline-none focus:ring-1 focus:ring-primary"
             autoFocus
