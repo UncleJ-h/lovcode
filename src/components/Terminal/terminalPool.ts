@@ -14,6 +14,18 @@ const terminalPool = new Map<string, PooledTerminal>();
 /** Track which PTY sessions are ready */
 export const ptyReadySessions = new Set<string>();
 
+/** Track auto-copy disposables per session */
+const autoCopyDisposables = new Map<string, { dispose: () => void }>();
+
+/** Global auto-copy enabled state */
+let autoCopyEnabled = (() => {
+  try {
+    return localStorage.getItem("terminal:autoCopyOnSelect") === "true";
+  } catch {
+    return false;
+  }
+})();
+
 /** Global lock to prevent concurrent PTY initialization */
 export const ptyInitLocks = new Map<string, Promise<void>>();
 
@@ -78,6 +90,9 @@ export function getOrCreateTerminal(sessionId: string): PooledTerminal {
   const pooled: PooledTerminal = { term, fitAddon, container };
   terminalPool.set(sessionId, pooled);
 
+  // Setup auto-copy if enabled
+  setupAutoCopy(sessionId, term);
+
   return pooled;
 }
 
@@ -122,6 +137,8 @@ export function disposeTerminal(sessionId: string): void {
   const pooled = terminalPool.get(sessionId);
   if (!pooled) return;
 
+  autoCopyDisposables.get(sessionId)?.dispose();
+  autoCopyDisposables.delete(sessionId);
   pooled.term.dispose();
   pooled.container.remove();
   terminalPool.delete(sessionId);
@@ -133,4 +150,38 @@ export function disposeTerminal(sessionId: string): void {
  */
 export function hasTerminal(sessionId: string): boolean {
   return terminalPool.has(sessionId);
+}
+
+/** Setup auto-copy listener for a terminal */
+function setupAutoCopy(sessionId: string, term: Terminal): void {
+  // Clean up existing
+  autoCopyDisposables.get(sessionId)?.dispose();
+  autoCopyDisposables.delete(sessionId);
+
+  if (!autoCopyEnabled) return;
+
+  const disposable = term.onSelectionChange(() => {
+    const selection = term.getSelection();
+    if (selection) {
+      navigator.clipboard.writeText(selection).catch(() => {});
+    }
+  });
+
+  autoCopyDisposables.set(sessionId, disposable);
+}
+
+/** Set auto-copy on select enabled state */
+export function setAutoCopyOnSelect(enabled: boolean): void {
+  autoCopyEnabled = enabled;
+  localStorage.setItem("terminal:autoCopyOnSelect", String(enabled));
+
+  // Update all existing terminals
+  for (const [sessionId, pooled] of terminalPool) {
+    setupAutoCopy(sessionId, pooled.term);
+  }
+}
+
+/** Get auto-copy on select enabled state */
+export function getAutoCopyOnSelect(): boolean {
+  return autoCopyEnabled;
 }

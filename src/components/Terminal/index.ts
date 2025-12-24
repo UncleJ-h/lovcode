@@ -1,3 +1,3 @@
 export { TerminalPane } from "./TerminalPane";
 export type { TerminalPaneProps } from "./TerminalPane";
-export { disposeTerminal } from "./terminalPool";
+export { disposeTerminal, setAutoCopyOnSelect, getAutoCopyOnSelect } from "./terminalPool";
