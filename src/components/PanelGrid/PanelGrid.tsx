@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon, ChevronLeftIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import { TerminalPane } from "../Terminal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import {
@@ -152,15 +152,18 @@ export function PanelGrid({
                           onRename={(t) => onSessionTitleChange(panel.id, session.id, t)}
                         />
                         {panel.sessions.length > 1 && (
-                          <button
+                          <span
+                            role="button"
+                            tabIndex={-1}
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.preventDefault();
                               onSessionClose(panel.id, session.id);
                             }}
-                            className="absolute right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-card-alt transition-opacity"
+                            className="absolute right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-card-alt transition-opacity cursor-pointer"
                           >
                             <Cross2Icon className="w-3 h-3" />
-                          </button>
+                          </span>
                         )}
                       </TabsTrigger>
                     ))}
@@ -241,6 +244,8 @@ export function PanelGrid({
 /** Shared panels zone - fixed left area */
 export interface SharedPanelZoneProps {
   panels: PanelState[];
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onPanelClose: (id: string) => void;
   onPanelToggleShared: (id: string) => void;
   onPanelReload: (id: string) => void;
@@ -252,6 +257,8 @@ export interface SharedPanelZoneProps {
 
 export function SharedPanelZone({
   panels,
+  collapsed,
+  onCollapsedChange,
   onPanelClose,
   onPanelToggleShared,
   onPanelReload,
@@ -271,8 +278,32 @@ export function SharedPanelZone({
     return null;
   }
 
+  // Collapsed state - show narrow bar with expand button
+  if (collapsed) {
+    return (
+      <div className="h-full flex flex-col bg-canvas-alt border-r border-border">
+        <button
+          onClick={() => onCollapsedChange(false)}
+          className="p-2 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
+          title="Expand shared panels"
+        >
+          <ChevronRightIcon className="w-4 h-4" />
+        </button>
+        <div className="flex-1 flex flex-col items-center pt-2 gap-1">
+          {panels.map((panel) => (
+            <div
+              key={panel.id}
+              className="w-1.5 h-1.5 rounded-full bg-primary"
+              title={panel.sessions.find(s => s.id === panel.activeSessionId)?.title || "Shared"}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full w-full min-w-0 flex flex-col gap-1 overflow-hidden">
+    <div className="h-full w-full min-w-0 flex flex-col overflow-hidden">
       {panels.map((panel) => (
         <div
           key={panel.id}
@@ -284,6 +315,13 @@ export function SharedPanelZone({
             className="flex flex-col h-full gap-0"
           >
             <div className="flex items-center bg-canvas-alt border-b border-border">
+              <button
+                onClick={() => onCollapsedChange(true)}
+                className="p-1 ml-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
+                title="Collapse shared panels"
+              >
+                <ChevronLeftIcon className="w-3.5 h-3.5" />
+              </button>
               <TabsList className="flex-1 h-8 p-0 rounded-none justify-start gap-0">
                 {panel.sessions.map((session) => (
                   <TabsTrigger
@@ -297,15 +335,18 @@ export function SharedPanelZone({
                       onRename={(t) => onSessionTitleChange(panel.id, session.id, t)}
                     />
                     {panel.sessions.length > 1 && (
-                      <button
+                      <span
+                        role="button"
+                        tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           onSessionClose(panel.id, session.id);
                         }}
-                        className="absolute right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-card-alt transition-opacity"
+                        className="absolute right-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-card-alt transition-opacity cursor-pointer"
                       >
                         <Cross2Icon className="w-3 h-3" />
-                      </button>
+                      </span>
                     )}
                   </TabsTrigger>
                 ))}

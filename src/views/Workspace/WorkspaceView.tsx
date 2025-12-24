@@ -23,6 +23,7 @@ export function WorkspaceView() {
   const [loading, setLoading] = useState(true);
   const [showNewFeatureDialog, setShowNewFeatureDialog] = useState(false);
   const [newFeatureName, setNewFeatureName] = useState("");
+  const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(false);
 
   // Load workspace data and reset running features (PTY sessions don't survive restarts)
   useEffect(() => {
@@ -823,9 +824,15 @@ export function WorkspaceView() {
                   <Allotment className="h-full">
                     {/* Shared panels zone */}
                     {sharedPanels.length > 0 && (
-                      <Allotment.Pane minSize={280} preferredSize={300}>
+                      <Allotment.Pane
+                        minSize={32}
+                        preferredSize={sharedPanelCollapsed ? 32 : 300}
+                        maxSize={sharedPanelCollapsed ? 32 : undefined}
+                      >
                         <SharedPanelZone
                           panels={sharedPanels}
+                          collapsed={sharedPanelCollapsed}
+                          onCollapsedChange={setSharedPanelCollapsed}
                           onPanelClose={handlePanelClose}
                           onPanelToggleShared={handlePanelToggleShared}
                           onPanelReload={handlePanelReload}
@@ -840,27 +847,33 @@ export function WorkspaceView() {
                     {/* Feature panels - render ALL features but hide inactive ones to keep PTY alive */}
                     <Allotment.Pane minSize={300}>
                       <div className="relative h-full">
-                        {activeProject?.features.map((feature) => (
-                          <div
-                            key={feature.id}
-                            className={`absolute inset-0 ${
-                              feature.id === activeFeature.id ? "" : "invisible pointer-events-none"
-                            }`}
-                          >
-                            <PanelGrid
-                              panels={allFeaturePanels.get(feature.id) || []}
-                              onPanelClose={handlePanelClose}
-                              onPanelAdd={handlePanelAdd}
-                              onPanelToggleShared={handlePanelToggleShared}
-                              onPanelReload={handlePanelReload}
-                              onSessionAdd={handleSessionAdd}
-                              onSessionClose={handleSessionClose}
-                              onSessionSelect={handleSessionSelect}
-                              onSessionTitleChange={handleSessionTitleChange}
-                              direction={feature.layout_direction || "horizontal"}
-                            />
-                          </div>
-                        ))}
+                        {activeProject?.features.map((feature) => {
+                          const isActive = feature.id === activeFeature.id;
+                          const featurePanels = allFeaturePanels.get(feature.id) || [];
+                          // Only render if active OR has panels (to keep PTY alive)
+                          if (!isActive && featurePanels.length === 0) return null;
+                          return (
+                            <div
+                              key={feature.id}
+                              className={`absolute inset-0 ${
+                                isActive ? "" : "invisible pointer-events-none"
+                              }`}
+                            >
+                              <PanelGrid
+                                panels={featurePanels}
+                                onPanelClose={handlePanelClose}
+                                onPanelAdd={handlePanelAdd}
+                                onPanelToggleShared={handlePanelToggleShared}
+                                onPanelReload={handlePanelReload}
+                                onSessionAdd={handleSessionAdd}
+                                onSessionClose={handleSessionClose}
+                                onSessionSelect={handleSessionSelect}
+                                onSessionTitleChange={handleSessionTitleChange}
+                                direction={feature.layout_direction || "horizontal"}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     </Allotment.Pane>
                   </Allotment>

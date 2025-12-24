@@ -15,6 +15,12 @@ interface PtyExitEvent {
   id: string;
 }
 
+// Global lock to prevent concurrent PTY initialization for the same session
+const ptyInitLocks = new Map<string, Promise<void>>();
+
+// Track which PTY sessions are ready (created and initialized)
+const ptyReadySessions = new Set<string>();
+
 export interface TerminalPaneProps {
   /** Unique identifier for this terminal session */
   ptyId: string;
@@ -76,6 +82,8 @@ export function TerminalPane({
       fontSize: 13,
       fontFamily: "Monaco, Menlo, 'DejaVu Sans Mono', Consolas, monospace",
       lineHeight: 1.2,
+      macOptionIsMeta: true,
+      allowProposedApi: true,
       theme: {
         background: "#1a1a1a",
         foreground: "#e0e0e0",
@@ -110,6 +118,25 @@ export function TerminalPane({
     const webLinksAddon = new WebLinksAddon();
     term.loadAddon(webLinksAddon);
 
+    // Workaround: Fix Chinese IME Shift+symbol issue (xterm.js #4486)
+    // When using Chinese IME, Shift+symbol keys trigger dead key / composition,
+    // requiring two presses. Bypass IME for these specific key combinations.
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type !== 'keydown') return true;
+      // Only handle if PTY is ready
+      if (!ptyReadySessions.has(sessionId)) return true;
+      // Shift + single printable symbol: event.key is the target character
+      if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        const key = event.key;
+        if (key.length === 1 && /^[!@#$%^&*()_+{}|:"<>?~]$/.test(key)) {
+          const encoder = new TextEncoder();
+          invoke("pty_write", { id: sessionId, data: Array.from(encoder.encode(key)) });
+          return false;
+        }
+      }
+      return true;
+    });
+
     // Open terminal in container
     term.open(containerRef.current);
     terminalRef.current = term;
@@ -123,14 +150,29 @@ export function TerminalPane({
     const mountState = { isMounted: true };
 
     // Initialize PTY session (create if not exists, reuse if exists)
+    // Uses global lock to prevent concurrent initialization of the same session
     const initPty = async () => {
-      try {
-        // Check mount state before async operation
-        if (!mountState.isMounted) {
-          console.log('[DEBUG][TerminalPane] initPty 取消 - 组件已卸载');
-          return;
-        }
+      // Wait for any pending initialization of the same session
+      const pendingInit = ptyInitLocks.get(sessionId);
+      if (pendingInit) {
+        console.log('[DEBUG][TerminalPane] 等待已有的 PTY 初始化完成:', sessionId);
+        await pendingInit;
+      }
 
+      // Check mount state before starting
+      if (!mountState.isMounted) {
+        console.log('[DEBUG][TerminalPane] initPty 取消 - 组件已卸载');
+        return;
+      }
+
+      // Create a new lock for this initialization
+      let resolveLock: () => void;
+      const lockPromise = new Promise<void>((resolve) => {
+        resolveLock = resolve;
+      });
+      ptyInitLocks.set(sessionId, lockPromise);
+
+      try {
         // Check if PTY session already exists (supports remounting without killing process)
         const exists = await invoke<boolean>("pty_exists", { id: sessionId });
         console.log('[DEBUG][TerminalPane] initPty - sessionId:', sessionId, 'exists:', exists, 'isMounted:', mountState.isMounted);
@@ -148,6 +190,9 @@ export function TerminalPane({
         } else {
           console.log('[DEBUG][TerminalPane] 复用已存在的 PTY session');
         }
+
+        // Mark session as ready BEFORE any resize call
+        ptyReadySessions.add(sessionId);
 
         // Check mount state after PTY creation
         if (!mountState.isMounted) {
@@ -168,12 +213,19 @@ export function TerminalPane({
           console.error("Failed to initialize PTY:", err);
           term.writeln(`\r\n\x1b[31mFailed to create terminal: ${err}\x1b[0m`);
         }
+      } finally {
+        // Release lock
+        ptyInitLocks.delete(sessionId);
+        resolveLock!();
       }
     };
 
-    // Handle user input
+    // Handle user input - only write if PTY session is ready
     const onDataDisposable = term.onData((data) => {
-      console.log('[DEBUG] onData:', JSON.stringify(data), 'length:', data.length);
+      if (!ptyReadySessions.has(sessionId)) {
+        console.log('[DEBUG][TerminalPane] onData 忽略 - PTY 未就绪:', sessionId);
+        return;
+      }
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
@@ -221,14 +273,18 @@ export function TerminalPane({
     };
   }, [ptyId]); // Only re-run when ptyId changes (reload), not cwd/command
 
-  // Handle resize
+  // Handle resize - only call pty_resize if session is ready
   const handleResize = useCallback(() => {
     if (!fitAddonRef.current || !terminalRef.current) return;
 
     fitAddonRef.current.fit();
 
-    const { cols, rows } = terminalRef.current;
-    invoke("pty_resize", { id: sessionIdRef.current, cols, rows }).catch(console.error);
+    const sessionId = sessionIdRef.current;
+    // Only resize if PTY session is ready (created and initialized)
+    if (ptyReadySessions.has(sessionId)) {
+      const { cols, rows } = terminalRef.current;
+      invoke("pty_resize", { id: sessionId, cols, rows }).catch(console.error);
+    }
   }, []);
 
   // Observe container size changes
