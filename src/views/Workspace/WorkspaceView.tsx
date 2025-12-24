@@ -866,7 +866,7 @@ export function WorkspaceView() {
               {/* Panel area */}
               <div className="flex-1 min-h-0 h-full">
                 {activeFeature ? (
-                  <Allotment className="h-full">
+                  <Allotment key={sharedPanelCollapsed ? "collapsed" : "expanded"} className="h-full">
                     {/* Shared panels zone */}
                     {sharedPanels.length > 0 && (
                       <Allotment.Pane
