@@ -374,7 +374,7 @@ export function WorkspaceView() {
 
       const newPanel: StoredPanelState = {
         id: panelId,
-        sessions: [{ id: sessionId, pty_id: ptyId, title: "Terminal" }],
+        sessions: [{ id: sessionId, pty_id: ptyId, title: activeFeature.name }],
         active_session_id: sessionId,
         is_shared: false,
         cwd: activeProject.path,
@@ -581,7 +581,8 @@ export function WorkspaceView() {
 
       const sessionId = crypto.randomUUID();
       const ptyId = crypto.randomUUID();
-      const newSession: StoredSessionState = { id: sessionId, pty_id: ptyId, title: "Terminal" };
+      const defaultTitle = activeFeature?.name || "Terminal";
+      const newSession: StoredSessionState = { id: sessionId, pty_id: ptyId, title: defaultTitle };
 
       const newProjects = workspace.projects.map((p) => {
         if (p.id !== activeProject.id) return p;
@@ -608,7 +609,7 @@ export function WorkspaceView() {
         projects: newProjects,
       });
     },
-    [activeProject, workspace, saveWorkspace]
+    [activeProject, activeFeature, workspace, saveWorkspace]
   );
 
   // Close session handler

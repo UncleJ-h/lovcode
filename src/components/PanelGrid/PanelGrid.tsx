@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon } from "@radix-ui/react-icons";
@@ -11,6 +11,60 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+
+/** Editable tab title - double click to rename */
+function EditableTabTitle({
+  title,
+  fallback,
+  onRename,
+}: {
+  title: string;
+  fallback: string;
+  onRename: (newTitle: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const handleConfirm = () => {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== title) onRename(trimmed);
+    else setValue(title);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleConfirm}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleConfirm();
+          if (e.key === "Escape") { setValue(title); setEditing(false); }
+          e.stopPropagation();
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-20 px-0.5 text-xs bg-card border border-primary rounded outline-none"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <span
+      className="truncate max-w-20 pr-4"
+      onDoubleClick={(e) => { e.stopPropagation(); setValue(title); setEditing(true); }}
+    >
+      {title || fallback}
+    </span>
+  );
+}
 
 export interface SessionState {
   id: string;
@@ -77,7 +131,7 @@ export function PanelGrid({
     >
       {panels.map((panel) => (
         <Allotment.Pane key={panel.id} minSize={150}>
-          <div className="h-full flex flex-col bg-terminal border border-border rounded-lg overflow-hidden">
+          <div className="h-full flex flex-col bg-terminal border border-border overflow-hidden">
               {/* Panel header with session tabs */}
               <Tabs
                 value={panel.activeSessionId}
@@ -214,7 +268,7 @@ export function SharedPanelZone({
   }
 
   return (
-    <div className="h-full w-full min-w-0 flex flex-col gap-1 p-1 overflow-hidden">
+    <div className="h-full w-full min-w-0 flex flex-col gap-1 overflow-hidden">
       {panels.map((panel) => (
         <div
           key={panel.id}
@@ -226,7 +280,6 @@ export function SharedPanelZone({
             className="flex flex-col h-full gap-0"
           >
             <div className="flex items-center bg-canvas-alt border-b border-border">
-              <PinLeftIcon className="w-3.5 h-3.5 text-primary ml-2" />
               <TabsList className="flex-1 h-8 p-0 rounded-none justify-start gap-0">
                 {panel.sessions.map((session) => (
                   <TabsTrigger
