@@ -1,4 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useAtom } from "jotai";
+import { featureSidebarExpandedPanelsAtom, featureSidebarPinnedExpandedAtom, featureSidebarFilesExpandedAtom } from "../../store";
 import {
   PlusIcon,
   DrawingPinFilledIcon,
@@ -61,23 +63,20 @@ export function FeatureSidebar({
   selectedFile,
   onFeatureRename,
 }: FeatureSidebarProps) {
-  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem("feature-sidebar-expanded-panels");
-    if (saved) {
-      try {
-        return new Set(JSON.parse(saved) as string[]);
-      } catch { /* ignore */ }
-    }
-    return new Set(pinnedPanels.map(p => p.id));
-  });
-  const [pinnedExpanded, setPinnedExpanded] = useState(() => {
-    const saved = localStorage.getItem("feature-sidebar-pinned-expanded");
-    return saved !== null ? saved === "true" : true;
-  });
-  const [filesExpanded, setFilesExpanded] = useState(() => {
-    const saved = localStorage.getItem("feature-sidebar-files-expanded");
-    return saved === "true";
-  });
+  const [expandedPanelsArr, setExpandedPanelsArr] = useAtom(featureSidebarExpandedPanelsAtom);
+  const expandedPanels = useMemo(() => new Set(expandedPanelsArr), [expandedPanelsArr]);
+  const setExpandedPanels = useCallback(
+    (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      setExpandedPanelsArr(prev => {
+        const prevSet = new Set(prev);
+        const next = typeof updater === "function" ? updater(prevSet) : updater;
+        return Array.from(next);
+      });
+    },
+    [setExpandedPanelsArr]
+  );
+  const [pinnedExpanded, setPinnedExpanded] = useAtom(featureSidebarPinnedExpandedAtom);
+  const [filesExpanded, setFilesExpanded] = useAtom(featureSidebarFilesExpandedAtom);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
 
@@ -102,16 +101,6 @@ export function FeatureSidebar({
     containerRef: sectionsRef,
   });
 
-  // Persist expand states
-  useEffect(() => {
-    localStorage.setItem("feature-sidebar-expanded-panels", JSON.stringify([...expandedPanels]));
-  }, [expandedPanels]);
-  useEffect(() => {
-    localStorage.setItem("feature-sidebar-pinned-expanded", String(pinnedExpanded));
-  }, [pinnedExpanded]);
-  useEffect(() => {
-    localStorage.setItem("feature-sidebar-files-expanded", String(filesExpanded));
-  }, [filesExpanded]);
 
   // Auto-expand newly pinned panels
   useEffect(() => {

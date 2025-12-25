@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback } from "react";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "../ui/collapsible";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { collapsibleStatesAtom } from "../../store";
 
 interface CollapsibleCardProps {
   storageKey: string;
@@ -22,7 +23,12 @@ export function CollapsibleCard({
   defaultOpen = true,
   children,
 }: CollapsibleCardProps) {
-  const [open, setOpen] = usePersistedState(storageKey, defaultOpen);
+  const [states, setStates] = useAtom(collapsibleStatesAtom);
+  const open = states[storageKey] ?? defaultOpen;
+  const setOpen = useCallback(
+    (value: boolean) => setStates(prev => ({ ...prev, [storageKey]: value })),
+    [storageKey, setStates]
+  );
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="bg-card rounded-xl border border-border overflow-hidden mb-4">

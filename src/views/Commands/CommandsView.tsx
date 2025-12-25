@@ -46,9 +46,10 @@ import {
   type MarketplaceItem,
 } from "../../components/config";
 import { BrowseMarketplaceButton } from "../../components/shared";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { commandsSortKeyAtom, commandsSortDirAtom, commandsShowDeprecatedAtom, commandsViewModeAtom, commandsExpandedFoldersAtom } from "../../store";
 import type { LocalCommand } from "../../types";
-import type { CommandSortKey, SortDirection, TreeNode, FolderNode } from "./types";
+import type { CommandSortKey, TreeNode, FolderNode } from "./types";
 import { DraggableCommandItem } from "./DraggableCommandItem";
 import { DroppableFolder } from "./DroppableFolder";
 import { RootDropZone } from "./RootDropZone";
@@ -70,11 +71,11 @@ export function CommandsView({
   const [commands, setCommands] = useState<LocalCommand[]>([]);
   const [commandStats, setCommandStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = usePersistedState<CommandSortKey>("lovcode:commands:sortKey", "usage");
-  const [sortDir, setSortDir] = usePersistedState<SortDirection>("lovcode:commands:sortDir", "desc");
-  const [showDeprecated, setShowDeprecated] = usePersistedState("lovcode:commands:showDeprecated", false);
-  const [viewMode, setViewMode] = usePersistedState<"flat" | "tree">("lovcode:commands:viewMode", "tree");
-  const [expandedFoldersArr, setExpandedFoldersArr] = usePersistedState<string[]>("lovcode:commands:expandedFolders", []);
+  const [sortKey, setSortKey] = useAtom(commandsSortKeyAtom);
+  const [sortDir, setSortDir] = useAtom(commandsSortDirAtom);
+  const [showDeprecated, setShowDeprecated] = useAtom(commandsShowDeprecatedAtom);
+  const [viewMode, setViewMode] = useAtom(commandsViewModeAtom);
+  const [expandedFoldersArr, setExpandedFoldersArr] = useAtom(commandsExpandedFoldersAtom);
   const expandedFolders = useMemo(() => new Set(expandedFoldersArr), [expandedFoldersArr]);
   const [deprecateDialogOpen, setDeprecateDialogOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState<LocalCommand | null>(null);

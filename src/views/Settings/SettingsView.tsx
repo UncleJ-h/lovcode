@@ -27,7 +27,8 @@ import {
 } from "../../components/config";
 import { BrowseMarketplaceButton, CollapsibleCard } from "../../components/shared";
 import { ContextFileItem, ConfigFileItem } from "../../components/ContextFileItem";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { routerTestStatusAtom, routerTestMessageAtom } from "../../store";
 import type { ClaudeSettings, ContextFile } from "../../types";
 import { ClaudeCodeVersionSection } from "./ClaudeCodeVersionSection";
 
@@ -67,14 +68,8 @@ export function SettingsView({
   const [applyStatus, setApplyStatus] = useState<Record<string, "idle" | "loading" | "success" | "error">>({});
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyHint, setApplyHint] = useState<Record<string, string>>({});
-  const [testStatus, setTestStatus] = usePersistedState<Record<string, "idle" | "loading" | "success" | "error">>(
-    "lovcode:settings:routerTestStatus",
-    {}
-  );
-  const [testMessage, setTestMessage] = usePersistedState<Record<string, string>>(
-    "lovcode:settings:routerTestMessage",
-    {}
-  );
+  const [testStatus, setTestStatus] = useAtom(routerTestStatusAtom);
+  const [testMessage, setTestMessage] = useAtom(routerTestMessageAtom);
   const [testMissingKeys, setTestMissingKeys] = useState<Record<string, string[]>>({});
   const [testMissingValues, setTestMissingValues] = useState<Record<string, Record<string, string>>>({});
   const [editingEnvKey, setEditingEnvKey] = useState<string | null>(null);

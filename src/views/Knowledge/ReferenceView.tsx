@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { BookmarkIcon, ChevronDownIcon } from "@radix-ui/react-icons";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { referenceCollapsedGroupsAtom, referenceExpandedSourceAtom } from "../../store";
 import { LoadingState, EmptyState, ConfigPage } from "../../components/config";
 import { DocumentReader } from "../../components/DocumentReader";
 
@@ -26,10 +27,7 @@ function ReferenceDocTree({
   sourceName: string;
   onDocClick: (source: string, doc: ReferenceDoc, index: number) => void;
 }) {
-  const [allCollapsed, setAllCollapsed] = usePersistedState<Record<string, string[]>>(
-    "lovcode:reference:collapsedGroups",
-    {}
-  );
+  const [allCollapsed, setAllCollapsed] = useAtom(referenceCollapsedGroupsAtom);
   const collapsedGroups = useMemo(
     () => new Set(allCollapsed[sourceName] ?? []),
     [allCollapsed, sourceName]
@@ -131,10 +129,7 @@ export function ReferenceView({
 }: ReferenceViewProps) {
   const [sources, setSources] = useState<ReferenceSource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [persistedSource, setPersistedSource] = usePersistedState<string | null>(
-    "lovcode:reference:expandedSource",
-    null
-  );
+  const [persistedSource, setPersistedSource] = useAtom(referenceExpandedSourceAtom);
   const [expandedSource, setExpandedSource] = useState<string | null>(
     initialSource ?? persistedSource
   );

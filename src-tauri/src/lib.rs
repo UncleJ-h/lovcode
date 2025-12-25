@@ -3168,6 +3168,58 @@ fn get_project_context(project_path: String) -> Result<Vec<ContextFile>, String>
 }
 
 // ============================================================================
+// Daily Message Stats for Activity Heatmap
+// ============================================================================
+
+#[tauri::command]
+async fn get_daily_message_stats() -> Result<HashMap<String, usize>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let projects_dir = get_claude_dir().join("projects");
+        let mut daily_counts: HashMap<String, usize> = HashMap::new();
+
+        if !projects_dir.exists() {
+            return Ok(daily_counts);
+        }
+
+        for project_entry in fs::read_dir(&projects_dir).into_iter().flatten().flatten() {
+            let project_path = project_entry.path();
+            if !project_path.is_dir() {
+                continue;
+            }
+
+            for session_entry in fs::read_dir(&project_path).into_iter().flatten().flatten() {
+                let session_path = session_entry.path();
+                if session_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+
+                // Read session file and extract timestamps
+                if let Ok(content) = fs::read_to_string(&session_path) {
+                    for line in content.lines() {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                            // Only count user and assistant messages
+                            let line_type = parsed.get("type").and_then(|v| v.as_str());
+                            if line_type == Some("user") || line_type == Some("assistant") {
+                                if let Some(ts) = parsed.get("timestamp").and_then(|v| v.as_str()) {
+                                    // Extract date part (YYYY-MM-DD) from ISO timestamp
+                                    if let Some(date) = ts.get(..10) {
+                                        *daily_counts.entry(date.to_string()).or_insert(0) += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(daily_counts)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ============================================================================
 // Command Usage Stats Feature
 // ============================================================================
 
@@ -4411,6 +4463,7 @@ pub fn run() {
             get_project_context,
             get_settings,
             get_command_stats,
+            get_daily_message_stats,
             get_templates_catalog,
             install_command_template,
             rename_command,

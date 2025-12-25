@@ -18,7 +18,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from "../../components/ui/dropdown-menu";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { originalChatAtom, markdownPreviewAtom } from "../../store";
 import { CollapsibleContent } from "./CollapsibleContent";
 import { CopyButton } from "./CopyButton";
 import { ExportDialog } from "./ExportDialog";
@@ -35,8 +36,8 @@ interface MessageViewProps {
 export function MessageView({ projectId, sessionId, summary, onBack }: MessageViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [originalChat, setOriginalChat] = usePersistedState("lovcode:originalChat", true);
-  const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
+  const [originalChat, setOriginalChat] = useAtom(originalChatAtom);
+  const [markdownPreview, setMarkdownPreview] = useAtom(markdownPreviewAtom);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 

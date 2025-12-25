@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileIcon, ChatBubbleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import { Switch } from "../../components/ui/switch";
-import { usePersistedState } from "../../hooks";
+import { useAtom } from "jotai";
+import { chatViewModeAtom, allProjectsSortByAtom, hideEmptySessionsAllAtom } from "../../store";
 import { useAppConfig } from "../../context";
 import { VirtualChatList } from "./VirtualChatList";
 import { formatRelativeTime } from "./utils";
-import type { SortKey, ChatViewMode } from "./types";
 import type { Project, Session, ChatMessage, SearchResult, ChatsResponse } from "../../types";
 
 interface ProjectListProps {
@@ -17,7 +17,7 @@ interface ProjectListProps {
 
 export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: ProjectListProps) {
   const { formatPath } = useAppConfig();
-  const [viewMode, setViewMode] = usePersistedState<ChatViewMode>("lovcode:chatViewMode", "projects");
+  const [viewMode, setViewMode] = useAtom(chatViewModeAtom);
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [allSessions, setAllSessions] = useState<Session[] | null>(null);
   const [allChats, setAllChats] = useState<ChatMessage[] | null>(null);
@@ -27,8 +27,8 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [totalChats, setTotalChats] = useState(0);
   const CHATS_PAGE_SIZE = 50;
-  const [sortBy, setSortBy] = usePersistedState<SortKey>("lovcode:allProjects:sortBy", "recent");
-  const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions-all", false);
+  const [sortBy, setSortBy] = useAtom(allProjectsSortByAtom);
+  const [hideEmptySessions, setHideEmptySessions] = useAtom(hideEmptySessionsAllAtom);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);

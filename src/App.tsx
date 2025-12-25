@@ -21,9 +21,10 @@ import { listen } from "@tauri-apps/api/event";
 // Modular imports
 import type {
   FeatureType, FeatureConfig, View, LocalCommand,
-  TemplatesCatalog, TemplateCategory, UserProfile,
+  TemplatesCatalog, UserProfile,
 } from "./types";
-import { usePersistedState } from "./hooks";
+import { useAtom } from "jotai";
+import { sidebarCollapsedAtom, marketplaceCategoryAtom, shortenPathsAtom, profileAtom, viewAtom, viewHistoryAtom, historyIndexAtom } from "./store";
 import { AppConfigContext, useAppConfig, type AppConfig } from "./context";
 import { FEATURES, FEATURE_ICONS } from "./constants";
 // Modular views
@@ -56,29 +57,9 @@ import {
 // ============================================================================
 
 function App() {
-  const [view, setView] = useState<View>(() => {
-    const saved = localStorage.getItem("lovcode-view");
-    if (saved) {
-      try {
-        return JSON.parse(saved) as View;
-      } catch {
-        return { type: "home" };
-      }
-    }
-    return { type: "home" };
-  });
-  const [viewHistory, setViewHistory] = useState<View[]>(() => {
-    const saved = localStorage.getItem("lovcode-view");
-    if (saved) {
-      try {
-        return [JSON.parse(saved) as View];
-      } catch {
-        return [{ type: "home" }];
-      }
-    }
-    return [{ type: "home" }];
-  });
-  const [historyIndex, setHistoryIndex] = useState(0);
+  const [view, setView] = useAtom(viewAtom);
+  const [viewHistory, setViewHistory] = useAtom(viewHistoryAtom);
+  const [historyIndex, setHistoryIndex] = useAtom(historyIndexAtom);
 
   const navigate = useCallback((newView: View) => {
     setViewHistory(prev => {
@@ -110,13 +91,13 @@ function App() {
     }
   }, [canGoForward, historyIndex, viewHistory]);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState("lovcode:sidebarCollapsed", false);
-  const [marketplaceCategory, setMarketplaceCategory] = usePersistedState<TemplateCategory>("lovcode:marketplaceCategory", "commands");
+  const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
+  const [marketplaceCategory, setMarketplaceCategory] = useAtom(marketplaceCategoryAtom);
   const [catalog, setCatalog] = useState<TemplatesCatalog | null>(null);
   const [homeDir, setHomeDir] = useState("");
-  const [shortenPaths, setShortenPaths] = usePersistedState("lovcode:shortenPaths", true);
+  const [shortenPaths, setShortenPaths] = useAtom(shortenPathsAtom);
   const [showSettings, setShowSettings] = useState(false);
-  const [profile, setProfile] = usePersistedState<UserProfile>("lovcode:profile", { nickname: "", avatarUrl: "" });
+  const [profile, setProfile] = useAtom(profileAtom);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [distillWatchEnabled, setDistillWatchEnabled] = useState(true);
 
@@ -125,9 +106,6 @@ function App() {
     invoke<boolean>("get_distill_watch_enabled").then(setDistillWatchEnabled).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("lovcode-view", JSON.stringify(view));
-  }, [view]);
 
   useEffect(() => {
     const unlisten = listen("menu-settings", () => setShowSettings(true));
@@ -425,7 +403,14 @@ function App() {
         </div>
 
         <main className="flex-1 overflow-auto">
-        {view.type === "home" && <Home onFeatureClick={handleFeatureClick} />}
+        {view.type === "home" && (
+          <Home
+            onFeatureClick={handleFeatureClick}
+            onProjectClick={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
+            onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
+            onSearch={() => navigate({ type: "chat-projects" })}
+          />
+        )}
         {view.type === "workspace" && <WorkspaceView />}
 
         {view.type === "chat-projects" && (

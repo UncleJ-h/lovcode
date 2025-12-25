@@ -53,6 +53,18 @@ pub struct PanelState {
     pub cwd: String,
 }
 
+/// Layout tree node - either a panel leaf or a split container
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum LayoutNode {
+    Panel { panelId: String },
+    Split {
+        direction: String,
+        first: Box<LayoutNode>,
+        second: Box<LayoutNode>,
+    },
+}
+
 /// Feature within a project
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Feature {
@@ -70,8 +82,12 @@ pub struct Feature {
     pub git_branch: Option<String>,
     pub chat_session_id: Option<String>,
     pub panels: Vec<PanelState>,
+    /// @deprecated Use layout instead
     #[serde(default)]
     pub layout_direction: Option<String>,
+    /// Tree-based layout for tmux-style splits
+    #[serde(default)]
+    pub layout: Option<LayoutNode>,
     pub created_at: u64,
 }
 
@@ -227,6 +243,7 @@ pub fn create_feature(project_id: &str, name: String) -> Result<Feature, String>
         chat_session_id: None,
         panels: Vec::new(),
         layout_direction: None,
+        layout: None,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
