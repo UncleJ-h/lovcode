@@ -197,9 +197,13 @@ export function TerminalPane({
         console.log('[DEBUG][TerminalPane] PTY ready', { sessionId, autoFocus: autoFocusRef.current });
         // Focus if autoFocus is true when PTY becomes ready
         if (autoFocusRef.current) {
+          // Use double rAF to ensure DOM is fully painted before focus
           requestAnimationFrame(() => {
-            console.log('[DEBUG][TerminalPane] Focus on PTY ready', { sessionId });
-            term.focus();
+            fitAddon.fit();
+            requestAnimationFrame(() => {
+              console.log('[DEBUG][TerminalPane] Focus on PTY ready', { sessionId });
+              term.focus();
+            });
           });
         }
         onReadyRef.current?.();
@@ -314,8 +318,14 @@ export function TerminalPane({
 
     const pooled = attachTerminal(ptyId, containerRef.current!);
     if (pooled) {
-      console.log('[DEBUG][TerminalPane] autoFocus triggered', { ptyId });
-      pooled.term.focus();
+      // Use double rAF to ensure DOM is fully painted before focus
+      requestAnimationFrame(() => {
+        pooled.fitAddon.fit();
+        requestAnimationFrame(() => {
+          console.log('[DEBUG][TerminalPane] autoFocus triggered', { ptyId });
+          pooled.term.focus();
+        });
+      });
     }
   }, [autoFocus, ptyId]);
 

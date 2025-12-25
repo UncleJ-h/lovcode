@@ -435,8 +435,11 @@ export function WorkspaceView() {
         ...workspace,
         projects: newProjects,
       });
+
+      // Focus the new panel
+      setActivePanelId(panelId);
     },
-    [activeProject, activeFeature, workspace, saveWorkspace, splitLayoutNode]
+    [activeProject, activeFeature, workspace, saveWorkspace, splitLayoutNode, setActivePanelId]
   );
 
   // Create initial panel (when feature has no panels)
@@ -475,7 +478,10 @@ export function WorkspaceView() {
       ...workspace,
       projects: newProjects,
     });
-  }, [activeProject, activeFeature, workspace, saveWorkspace]);
+
+    // Focus the new panel
+    setActivePanelId(panelId);
+  }, [activeProject, activeFeature, workspace, saveWorkspace, setActivePanelId]);
 
   // Add pinned panel handler
   const handleAddPinnedPanel = useCallback(() => {
@@ -505,7 +511,10 @@ export function WorkspaceView() {
       ...workspace,
       projects: newProjects,
     });
-  }, [activeProject, workspace, saveWorkspace]);
+
+    // Focus the new pinned panel
+    setActivePanelId(panelId);
+  }, [activeProject, workspace, saveWorkspace, setActivePanelId]);
 
   // Close panel handler
   const handlePanelClose = useCallback(
@@ -784,8 +793,11 @@ export function WorkspaceView() {
         ...workspace,
         projects: newProjects,
       });
+
+      // Focus the panel with new session
+      setActivePanelId(panelId);
     },
-    [activeProject, activeFeature, workspace, saveWorkspace]
+    [activeProject, activeFeature, workspace, saveWorkspace, setActivePanelId]
   );
 
   // Close session handler
@@ -852,8 +864,11 @@ export function WorkspaceView() {
         ...workspace,
         projects: newProjects,
       });
+
+      // Keep focus on the panel where session was closed
+      setActivePanelId(panelId);
     },
-    [activeProject, workspace, saveWorkspace]
+    [activeProject, workspace, saveWorkspace, setActivePanelId]
   );
 
   // Select session handler
