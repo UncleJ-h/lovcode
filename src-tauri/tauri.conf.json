@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "defaultWindowIcon": "icons/icon.png",
     "macOSPrivateApi": true,
     "windows": [
       {
