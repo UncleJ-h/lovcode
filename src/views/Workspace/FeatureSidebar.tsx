@@ -147,6 +147,9 @@ export function FeatureSidebar({
     }
   }, [handleRenameSubmit]);
 
+  // Calculate total sessions count
+  const totalSessionsCount = pinnedPanels.reduce((sum, p) => sum + p.sessions.length, 0);
+
   // Collapsed state
   if (collapsed) {
     return (
@@ -159,14 +162,24 @@ export function FeatureSidebar({
           <ChevronRightIcon className="w-4 h-4" />
         </button>
         <div className="flex-1 flex flex-col items-center pt-2 gap-2">
-          {pinnedPanels.map((panel) => (
-            <span
-              key={panel.id}
-              title={panel.sessions.find(s => s.id === panel.activeSessionId)?.title || "Pinned"}
-            >
+          {/* Pinned section with count */}
+          <div className="flex flex-col items-center gap-0.5">
+            <span title={`${totalSessionsCount} sessions`}>
               <DrawingPinFilledIcon className="w-3 h-3 text-primary/70" />
             </span>
-          ))}
+            <span className="text-[10px] text-muted-foreground">{totalSessionsCount}</span>
+          </div>
+          {/* Add button */}
+          <button
+            onClick={() => {
+              onCollapsedChange(false);
+              onAddPinnedPanel();
+            }}
+            className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
+            title="New pinned session"
+          >
+            <PlusIcon className="w-3 h-3" />
+          </button>
           <span title="Files">
             <FileIcon className="w-3 h-3 text-muted-foreground" />
           </span>
@@ -230,10 +243,13 @@ export function FeatureSidebar({
           >
             <SectionHeader
               title="Pinned Sessions"
-              count={pinnedPanels.length > 1 ? pinnedPanels.length : undefined}
+              count={totalSessionsCount}
               expanded={pinnedExpanded}
               onToggle={() => setPinnedExpanded(!pinnedExpanded)}
-              onAdd={onAddPinnedPanel}
+              onAdd={() => {
+                setPinnedExpanded(true);
+                onAddPinnedPanel();
+              }}
             />
             {pinnedExpanded && pinnedPanels.length > 0 && <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               {pinnedPanels.map((panel) => {
@@ -327,7 +343,7 @@ function SectionHeader({
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           {title}
         </span>
-        {count !== undefined && count > 0 && (
+        {count !== undefined && (
           <span className="text-xs text-muted-foreground/60">({count})</span>
         )}
       </div>

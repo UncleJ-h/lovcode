@@ -250,25 +250,49 @@ export function TerminalPane({
     const pooled = attachTerminal(ptyId, containerRef.current!);
     if (!pooled) return;
 
+    const oldCols = pooled.term.cols;
+    const oldRows = pooled.term.rows;
     pooled.fitAddon.fit();
+    const newCols = pooled.term.cols;
+    const newRows = pooled.term.rows;
+
+    console.log('[DEBUG][TerminalPane] handleResize:', {
+      ptyId,
+      oldSize: { cols: oldCols, rows: oldRows },
+      newSize: { cols: newCols, rows: newRows },
+      containerSize: containerRef.current ? {
+        width: containerRef.current.offsetWidth,
+        height: containerRef.current.offsetHeight,
+      } : null,
+    });
 
     if (ptyReadySessions.has(ptyId)) {
-      const { cols, rows } = pooled.term;
-      invoke("pty_resize", { id: ptyId, cols, rows }).catch(console.error);
+      invoke("pty_resize", { id: ptyId, cols: newCols, rows: newRows }).catch(console.error);
     }
   }, [ptyId]);
 
-  // Observe container size changes
+  // Observe container size changes (debounced to avoid SIGWINCH spam)
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const resizeObserver = new ResizeObserver(() => {
-      handleResize();
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      console.log('[DEBUG][TerminalPane] ResizeObserver triggered:', {
+        ptyId,
+        contentRect: entry?.contentRect ? {
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        } : null,
+      });
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(handleResize, 100);
     });
 
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
     };
   }, [handleResize]);
