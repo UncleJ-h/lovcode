@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, DashboardIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, DashboardIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon, DrawingPinIcon, TrashIcon, Pencil1Icon } from "@radix-ui/react-icons";
 import { ProjectLogo } from "./ProjectLogo";
 import {
   ContextMenu,
@@ -26,13 +26,17 @@ interface ProjectSidebarProps {
   activeFeatureId?: string;
   onSelectFeature: (projectId: string, featureId: string) => void;
   onAddProject: () => void;
-  onAddFeature: (projectId: string) => void;
+  onAddFeature: (projectId: string) => Promise<{ featureId: string; featureName: string } | undefined>;
   onArchiveProject: (id: string) => void;
   onUnarchiveProject: (id: string) => void;
   onUnarchiveFeature: (projectId: string, featureId: string) => void;
   onOpenDashboard: (id: string) => void;
   onOpenFeaturePanel: (id: string) => void;
   onRenameFeature?: (projectId: string, featureId: string, name: string) => void;
+  onArchiveFeature?: (projectId: string, featureId: string) => void;
+  onDeleteFeature?: (projectId: string, featureId: string) => void;
+  onPinFeature?: (projectId: string, featureId: string, pinned: boolean) => void;
+  onChangeFeatureStatus?: (projectId: string, featureId: string, status: FeatureStatus) => void;
 }
 
 export function ProjectSidebar({
@@ -48,6 +52,10 @@ export function ProjectSidebar({
   onOpenDashboard,
   onOpenFeaturePanel,
   onRenameFeature,
+  onArchiveFeature,
+  onDeleteFeature,
+  onPinFeature,
+  onChangeFeatureStatus,
 }: ProjectSidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() =>
     new Set(activeProjectId ? [activeProjectId] : [])
@@ -55,6 +63,7 @@ export function ProjectSidebar({
   const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameJustStartedRef = useRef(false);
 
   // Auto-expand active project
   useEffect(() => {
@@ -62,6 +71,23 @@ export function ProjectSidebar({
       setExpandedProjects(prev => new Set([...prev, activeProjectId]));
     }
   }, [activeProjectId]);
+
+  // Auto-focus rename input when entering rename mode
+  useEffect(() => {
+    if (renamingFeatureId) {
+      // Wait for DOM to stabilize before focusing
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (renameInputRef.current) {
+            renameInputRef.current.focus();
+            renameInputRef.current.select();
+          }
+          // Clear the flag after focus is stable
+          renameJustStartedRef.current = false;
+        });
+      });
+    }
+  }, [renamingFeatureId]);
 
   const toggleProjectExpanded = (projectId: string) => {
     setExpandedProjects(prev => {
@@ -77,9 +103,9 @@ export function ProjectSidebar({
 
   const handleStartRename = useCallback((featureId: string, currentName: string) => {
     if (!onRenameFeature) return;
+    renameJustStartedRef.current = true;
     setRenameValue(currentName);
     setRenamingFeatureId(featureId);
-    setTimeout(() => renameInputRef.current?.select(), 0);
   }, [onRenameFeature]);
 
   const handleRenameSubmit = useCallback((projectId: string, featureId: string, originalName: string) => {
@@ -134,9 +160,13 @@ export function ProjectSidebar({
                         <span className="flex items-center -mr-1">
                           <span
                             className="p-0.5 rounded hover:bg-muted text-muted-foreground/50 hover:text-muted-foreground"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              onAddFeature(project.id);
+                              const result = await onAddFeature(project.id);
+                              if (result) {
+                                setExpandedProjects(prev => new Set([...prev, project.id]));
+                                handleStartRename(result.featureId, result.featureName);
+                              }
                             }}
                             title="New Feature"
                           >
@@ -163,7 +193,13 @@ export function ProjectSidebar({
                     {/* Feature Management */}
                     <ContextMenuLabel>Feature</ContextMenuLabel>
                     <ContextMenuItem
-                      onClick={() => onAddFeature(project.id)}
+                      onClick={async () => {
+                        const result = await onAddFeature(project.id);
+                        if (result) {
+                          setExpandedProjects(prev => new Set([...prev, project.id]));
+                          handleStartRename(result.featureId, result.featureName);
+                        }
+                      }}
                       className="gap-2 cursor-pointer"
                     >
                       <PlusIcon className="w-3.5 h-3.5" />
@@ -241,7 +277,10 @@ export function ProjectSidebar({
                                     ref={renameInputRef}
                                     value={renameValue}
                                     onChange={(e) => setRenameValue(e.target.value)}
-                                    onBlur={() => handleRenameSubmit(project.id, feature.id, feature.name)}
+                                    onBlur={() => {
+                                      if (renameJustStartedRef.current) return;
+                                      handleRenameSubmit(project.id, feature.id, feature.name);
+                                    }}
                                     onKeyDown={(e) => handleRenameKeyDown(e, project.id, feature.id, feature.name)}
                                     onClick={(e) => e.stopPropagation()}
                                     className="flex-1 text-sm bg-card border border-border rounded outline-none focus:border-primary min-w-0 px-1"
@@ -260,13 +299,88 @@ export function ProjectSidebar({
                                 )}
                               </div>
                             </ContextMenuTrigger>
-                            <ContextMenuContent className="min-w-[120px]">
+                            <ContextMenuContent className="min-w-[140px]">
                               <ContextMenuItem
                                 onClick={() => handleStartRename(feature.id, feature.name)}
                                 disabled={!onRenameFeature}
-                                className="cursor-pointer"
+                                className="gap-2 cursor-pointer"
                               >
+                                <Pencil1Icon className="w-3.5 h-3.5" />
                                 Rename
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => onPinFeature?.(project.id, feature.id, !feature.pinned)}
+                                disabled={!onPinFeature}
+                                className="gap-2 cursor-pointer"
+                              >
+                                {feature.pinned ? (
+                                  <>
+                                    <DrawingPinIcon className="w-3.5 h-3.5" />
+                                    Unpin
+                                  </>
+                                ) : (
+                                  <>
+                                    <DrawingPinFilledIcon className="w-3.5 h-3.5" />
+                                    Pin
+                                  </>
+                                )}
+                              </ContextMenuItem>
+                              <ContextMenuSub>
+                                <ContextMenuSubTrigger className="gap-2">
+                                  <StatusIcon status={feature.status} />
+                                  Status
+                                </ContextMenuSubTrigger>
+                                <ContextMenuSubContent className="min-w-[120px]">
+                                  <ContextMenuItem
+                                    onClick={() => onChangeFeatureStatus?.(project.id, feature.id, "pending")}
+                                    disabled={!onChangeFeatureStatus || feature.status === "pending"}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <TimerIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                                    Pending
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() => onChangeFeatureStatus?.(project.id, feature.id, "running")}
+                                    disabled={!onChangeFeatureStatus || feature.status === "running"}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <UpdateIcon className="w-3.5 h-3.5 text-blue-500" />
+                                    Running
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() => onChangeFeatureStatus?.(project.id, feature.id, "completed")}
+                                    disabled={!onChangeFeatureStatus || feature.status === "completed"}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <CheckCircledIcon className="w-3.5 h-3.5 text-green-500" />
+                                    Completed
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() => onChangeFeatureStatus?.(project.id, feature.id, "needs-review")}
+                                    disabled={!onChangeFeatureStatus || feature.status === "needs-review"}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500" />
+                                    Needs Review
+                                  </ContextMenuItem>
+                                </ContextMenuSubContent>
+                              </ContextMenuSub>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => onArchiveFeature?.(project.id, feature.id)}
+                                disabled={!onArchiveFeature}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <ArchiveIcon className="w-3.5 h-3.5" />
+                                Archive
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => onDeleteFeature?.(project.id, feature.id)}
+                                disabled={!onDeleteFeature}
+                                className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                              >
+                                <TrashIcon className="w-3.5 h-3.5" />
+                                Delete
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>

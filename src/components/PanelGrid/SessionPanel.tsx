@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { PanelState } from "./PanelGrid";
 
 /** Editable tab title - double click to rename */
@@ -92,7 +92,7 @@ export interface SessionPanelProps {
   titleFallback?: string;
 }
 
-export function SessionPanel({
+export const SessionPanel = memo(function SessionPanel({
   panel,
   isActive = false,
   collapsible = false,
@@ -110,7 +110,6 @@ export function SessionPanel({
   headerBg = "bg-muted",
   titleFallback = "Terminal",
 }: SessionPanelProps) {
-  console.log('[DEBUG][SessionPanel]', { panelId: panel.id, isActive, activeSessionId: panel.activeSessionId });
   const [autoCopyEnabled, setAutoCopyEnabled] = useState(getAutoCopyOnSelect);
 
   const handleTitleChange = useCallback(

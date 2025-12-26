@@ -203,8 +203,10 @@ export function WorkspaceView() {
         projects: newProjects,
         active_project_id: targetProject.id,
       });
+      return { featureId: feature.id, featureName: name };
     } catch (err) {
       console.error("Failed to create feature:", err);
+      return undefined;
     }
   }, [activeProject, workspace, saveWorkspace]);
 
@@ -250,6 +252,106 @@ export function WorkspaceView() {
         projects: newProjects,
         active_project_id: projectId,
       });
+    },
+    [workspace, saveWorkspace]
+  );
+
+  // Archive feature handler
+  const handleArchiveFeature = useCallback(
+    (projectId: string, featureId: string) => {
+      if (!workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        const activeFeatures = p.features.filter((f) => f.id !== featureId && !f.archived);
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, archived: true } : f
+          ),
+          active_feature_id:
+            p.active_feature_id === featureId
+              ? activeFeatures[0]?.id
+              : p.active_feature_id,
+        };
+      });
+      saveWorkspace({ ...workspace, projects: newProjects });
+    },
+    [workspace, saveWorkspace]
+  );
+
+  // Delete feature handler
+  const handleDeleteFeature = useCallback(
+    (projectId: string, featureId: string) => {
+      if (!workspace) return;
+
+      // Find and kill PTYs for this feature before deleting
+      const project = workspace.projects.find((p) => p.id === projectId);
+      if (project) {
+        const feature = project.features.find((f) => f.id === featureId);
+        if (feature) {
+          for (const panel of feature.panels) {
+            for (const session of panel.sessions || []) {
+              disposeTerminal(session.pty_id);
+              invoke("pty_kill", { id: session.pty_id }).catch(console.error);
+              invoke("pty_purge_scrollback", { id: session.pty_id }).catch(console.error);
+            }
+          }
+        }
+      }
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        const remainingFeatures = p.features.filter((f) => f.id !== featureId);
+        const activeFeatures = remainingFeatures.filter((f) => !f.archived);
+        return {
+          ...p,
+          features: remainingFeatures,
+          active_feature_id:
+            p.active_feature_id === featureId
+              ? activeFeatures[0]?.id
+              : p.active_feature_id,
+        };
+      });
+      saveWorkspace({ ...workspace, projects: newProjects });
+    },
+    [workspace, saveWorkspace]
+  );
+
+  // Pin/Unpin feature handler
+  const handlePinFeature = useCallback(
+    (projectId: string, featureId: string, pinned: boolean) => {
+      if (!workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, pinned } : f
+          ),
+        };
+      });
+      saveWorkspace({ ...workspace, projects: newProjects });
+    },
+    [workspace, saveWorkspace]
+  );
+
+  // Change feature status handler
+  const handleChangeFeatureStatus = useCallback(
+    (projectId: string, featureId: string, status: FeatureStatus) => {
+      if (!workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== projectId) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, status } : f
+          ),
+        };
+      });
+      saveWorkspace({ ...workspace, projects: newProjects });
     },
     [workspace, saveWorkspace]
   );
@@ -1064,6 +1166,10 @@ export function WorkspaceView() {
           onArchiveProject={handleArchiveProject}
           onUnarchiveProject={handleUnarchiveProject}
           onUnarchiveFeature={handleUnarchiveFeature}
+          onArchiveFeature={handleArchiveFeature}
+          onDeleteFeature={handleDeleteFeature}
+          onPinFeature={handlePinFeature}
+          onChangeFeatureStatus={handleChangeFeatureStatus}
           onOpenDashboard={handleOpenDashboard}
           onOpenFeaturePanel={handleOpenFeaturePanel}
           onRenameFeature={(projectId, featureId, name) => {
