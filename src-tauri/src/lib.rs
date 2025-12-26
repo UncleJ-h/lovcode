@@ -3445,6 +3445,16 @@ fn open_session_in_editor(project_id: String, session_id: String) -> Result<(), 
 }
 
 #[tauri::command]
+fn copy_session_file_path(project_id: String, session_id: String) -> Result<(), String> {
+    let path = get_session_path(&project_id, &session_id);
+    if !path.exists() {
+        return Err("Session file not found".to_string());
+    }
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(path.to_string_lossy().to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn reveal_session_file(project_id: String, session_id: String) -> Result<(), String> {
     let session_path = get_session_path(&project_id, &session_id);
 
@@ -4482,6 +4492,7 @@ pub fn run() {
             open_in_editor,
             open_session_in_editor,
             reveal_session_file,
+            copy_session_file_path,
             get_settings_path,
             get_mcp_config_path,
             get_home_dir,

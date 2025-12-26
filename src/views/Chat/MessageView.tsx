@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DotsHorizontalIcon, ExternalLinkIcon, DownloadIcon } from "@radix-ui/react-icons";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Copy } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -51,6 +51,10 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
     return originalChat ? restoreSlashCommand(content) : content;
   };
 
+  const handleCopyPath = () => {
+    invoke("copy_session_file_path", { projectId, sessionId });
+  };
+
   const filteredMessages = useMemo(
     () => (originalChat ? messages.filter((m) => !m.is_meta && !m.is_tool) : messages),
     [messages, originalChat]
@@ -92,6 +96,10 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
                 <ExternalLinkIcon width={14} />
                 Open in Editor
               </ContextMenuItem>
+              <ContextMenuItem onClick={handleCopyPath}>
+                <Copy size={14} />
+                Copy Path
+              </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuCheckboxItem checked={originalChat} onCheckedChange={setOriginalChat}>
                 Original View
@@ -120,6 +128,10 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
               <DropdownMenuItem onClick={() => invoke("open_session_in_editor", { projectId, sessionId })}>
                 <ExternalLinkIcon width={14} />
                 Open in Editor
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyPath}>
+                <Copy size={14} />
+                Copy Path
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem checked={originalChat} onCheckedChange={setOriginalChat}>
