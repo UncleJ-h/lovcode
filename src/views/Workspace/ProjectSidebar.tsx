@@ -211,41 +211,53 @@ export function ProjectSidebar({
                       .map((feature) => {
                         const isFeatureActive = isActive && feature.id === activeFeatureId;
                         return (
-                          <div
-                            key={feature.id}
-                            className={`flex items-center gap-1.5 ml-[30px] mr-2 px-2 py-1 rounded cursor-pointer transition-colors ${
-                              isFeatureActive
-                                ? "bg-primary/10 text-primary"
-                                : "text-muted-foreground hover:text-ink hover:bg-card-alt"
-                            }`}
-                            onClick={() => onSelectFeature(project.id, feature.id)}
-                          >
-                            {feature.pinned && <DrawingPinFilledIcon className="w-3 h-3 text-primary/70 flex-shrink-0" />}
-                            <StatusIcon status={feature.status} />
-                            {feature.seq > 0 && <span className="text-xs text-muted-foreground/60">#{feature.seq}</span>}
-                            {renamingFeatureId === feature.id ? (
-                              <input
-                                ref={renameInputRef}
-                                value={renameValue}
-                                onChange={(e) => setRenameValue(e.target.value)}
-                                onBlur={() => handleRenameSubmit(project.id, feature.id, feature.name)}
-                                onKeyDown={(e) => handleRenameKeyDown(e, project.id, feature.id, feature.name)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="flex-1 text-sm bg-card border border-border rounded outline-none focus:border-primary min-w-0 px-1"
-                              />
-                            ) : (
-                              <span
-                                className="text-sm truncate"
-                                onDoubleClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartRename(feature.id, feature.name);
-                                }}
-                                title={onRenameFeature ? "Double-click to rename" : undefined}
+                          <ContextMenu key={feature.id}>
+                            <ContextMenuTrigger asChild>
+                              <div
+                                className={`flex items-center gap-1.5 ml-[30px] mr-2 px-2 py-1 rounded cursor-pointer transition-colors ${
+                                  isFeatureActive
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-muted-foreground hover:text-ink hover:bg-card-alt"
+                                }`}
+                                onClick={() => onSelectFeature(project.id, feature.id)}
                               >
-                                {feature.name}
-                              </span>
-                            )}
-                          </div>
+                                {feature.pinned && <DrawingPinFilledIcon className="w-3 h-3 text-primary/70 flex-shrink-0" />}
+                                <StatusIcon status={feature.status} />
+                                {feature.seq > 0 && <span className="text-xs text-muted-foreground/60">#{feature.seq}</span>}
+                                {renamingFeatureId === feature.id ? (
+                                  <input
+                                    ref={renameInputRef}
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    onBlur={() => handleRenameSubmit(project.id, feature.id, feature.name)}
+                                    onKeyDown={(e) => handleRenameKeyDown(e, project.id, feature.id, feature.name)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 text-sm bg-card border border-border rounded outline-none focus:border-primary min-w-0 px-1"
+                                  />
+                                ) : (
+                                  <span
+                                    className="text-sm truncate"
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartRename(feature.id, feature.name);
+                                    }}
+                                    title={onRenameFeature ? "Double-click to rename" : undefined}
+                                  >
+                                    {feature.name}
+                                  </span>
+                                )}
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="min-w-[120px]">
+                              <ContextMenuItem
+                                onClick={() => handleStartRename(feature.id, feature.name)}
+                                disabled={!onRenameFeature}
+                                className="cursor-pointer"
+                              >
+                                Rename
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         );
                       })}
                   </div>
