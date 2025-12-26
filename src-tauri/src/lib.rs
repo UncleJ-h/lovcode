@@ -173,8 +173,9 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub timestamp: String,
-    pub is_meta: bool, // slash command 展开的内容
-    pub is_tool: bool, // tool_use 或 tool_result
+    pub is_meta: bool,  // slash command 展开的内容
+    pub is_tool: bool,  // tool_use 或 tool_result
+    pub line_number: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -803,7 +804,7 @@ async fn get_session_messages(
         let content = fs::read_to_string(&session_path).map_err(|e| e.to_string())?;
         let mut messages = Vec::new();
 
-        for line in content.lines() {
+        for (idx, line) in content.lines().enumerate() {
             if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
                 let line_type = parsed.line_type.as_deref();
                 if line_type == Some("user") || line_type == Some("assistant") {
@@ -820,6 +821,7 @@ async fn get_session_messages(
                                 timestamp: parsed.timestamp.unwrap_or_default(),
                                 is_meta,
                                 is_tool,
+                                line_number: idx + 1,
                             });
                         }
                     }
@@ -3445,13 +3447,18 @@ fn open_session_in_editor(project_id: String, session_id: String) -> Result<(), 
 }
 
 #[tauri::command]
-fn copy_session_file_path(project_id: String, session_id: String) -> Result<(), String> {
+fn get_session_file_path(project_id: String, session_id: String) -> Result<String, String> {
     let path = get_session_path(&project_id, &session_id);
     if !path.exists() {
         return Err("Session file not found".to_string());
     }
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn copy_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(path.to_string_lossy().to_string()).map_err(|e| e.to_string())
+    clipboard.set_text(text).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -4492,7 +4499,8 @@ pub fn run() {
             open_in_editor,
             open_session_in_editor,
             reveal_session_file,
-            copy_session_file_path,
+            get_session_file_path,
+            copy_to_clipboard,
             get_settings_path,
             get_mcp_config_path,
             get_home_dir,

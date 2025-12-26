@@ -51,6 +51,7 @@ export interface Message {
   timestamp: string;
   is_meta: boolean;
   is_tool: boolean;
+  line_number: number;
 }
 
 export interface ChatMessage {

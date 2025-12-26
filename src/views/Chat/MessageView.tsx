@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DotsHorizontalIcon, ExternalLinkIcon, DownloadIcon } from "@radix-ui/react-icons";
-import { FolderOpen, Copy } from "lucide-react";
+import { FolderOpen, Copy, FileCode } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,7 +21,6 @@ import {
 import { useAtom } from "jotai";
 import { originalChatAtom, markdownPreviewAtom } from "../../store";
 import { CollapsibleContent } from "./CollapsibleContent";
-import { CopyButton } from "./CopyButton";
 import { ExportDialog } from "./ExportDialog";
 import { restoreSlashCommand } from "./utils";
 import type { Message } from "../../types";
@@ -40,11 +39,15 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
   const [markdownPreview, setMarkdownPreview] = useAtom(markdownPreviewAtom);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [sessionFilePath, setSessionFilePath] = useState("");
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
       .then(setMessages)
       .finally(() => setLoading(false));
+    invoke<string>("get_session_file_path", { projectId, sessionId })
+      .then(setSessionFilePath)
+      .catch(() => {});
   }, [projectId, sessionId]);
 
   const processContent = (content: string) => {
@@ -52,7 +55,19 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
   };
 
   const handleCopyPath = () => {
-    invoke("copy_session_file_path", { projectId, sessionId });
+    if (sessionFilePath) {
+      invoke("copy_to_clipboard", { text: sessionFilePath });
+    }
+  };
+
+  const handleCopyContent = (content: string) => {
+    invoke("copy_to_clipboard", { text: content });
+  };
+
+  const handleCopyFileLine = (lineNumber: number) => {
+    if (sessionFilePath) {
+      invoke("copy_to_clipboard", { text: `${sessionFilePath}:${lineNumber}` });
+    }
   };
 
   const filteredMessages = useMemo(
@@ -160,7 +175,23 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
                 msg.role === "user" ? "bg-card-alt" : "bg-card border border-border"
               }`}
             >
-              <CopyButton text={displayContent} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="absolute top-3 right-3 p-1.5 rounded-md bg-card-alt/80 hover:bg-card-alt text-muted-foreground hover:text-ink transition-opacity opacity-0 group-hover:opacity-100">
+                    <DotsHorizontalIcon width={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleCopyContent(displayContent)}>
+                    <Copy size={14} />
+                    Copy Content
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleCopyFileLine(msg.line_number)}>
+                    <FileCode size={14} />
+                    Copy file:line
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <p className="text-xs text-muted-foreground-foreground mb-2 uppercase tracking-wide">{msg.role}</p>
               <CollapsibleContent content={displayContent} markdown={markdownPreview} />
             </div>
