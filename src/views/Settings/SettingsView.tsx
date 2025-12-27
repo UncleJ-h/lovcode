@@ -35,6 +35,7 @@ import { useAtom } from "jotai";
 import { routerTestStatusAtom, routerTestMessageAtom } from "../../store";
 import type { ClaudeSettings, ContextFile } from "../../types";
 import { ClaudeCodeVersionSection } from "./ClaudeCodeVersionSection";
+import { trackProviderEvent, isAnalyticsEnabled, setAnalyticsEnabled } from "../../lib/analytics";
 
 interface SettingsViewProps {
   marketplaceItems: MarketplaceItem[];
@@ -90,6 +91,7 @@ export function SettingsView({
     univibe: "claude-sonnet-4-5-20250929",
     siliconflow: "moonshotai/Kimi-K2-Instruct-0905",
   });
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(isAnalyticsEnabled);
 
   // Initialize selected model from current env
   useEffect(() => {
@@ -402,11 +404,17 @@ export function SettingsView({
               ...prev,
               [presetKey]: `UniVibe test failed (${result.code}): ${result.stderr || result.stdout || "No output"}`,
             }));
+            trackProviderEvent({ action: "test", provider: presetKey, success: false, error_message: `${result.code}` });
             return;
           }
+          setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: "Connected" }));
+          trackProviderEvent({ action: "test", provider: presetKey, success: true });
+          return;
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
           setTestMessage((prev) => ({ ...prev, [presetKey]: `UniVibe test error: ${String(e)}` }));
+          trackProviderEvent({ action: "test", provider: presetKey, success: false, error_message: String(e) });
           return;
         }
       }
@@ -427,6 +435,7 @@ export function SettingsView({
               ...prev,
               [presetKey]: `SiliconFlow test failed (${result.status}): ${result.body || "No response body"}`,
             }));
+            trackProviderEvent({ action: "test", provider: presetKey, success: false, error_message: `${result.status}` });
             return;
           }
 
@@ -439,10 +448,12 @@ export function SettingsView({
 
           setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
           setTestMessage((prev) => ({ ...prev, [presetKey]: `Connected (${modelCount} models available)` }));
+          trackProviderEvent({ action: "test", provider: presetKey, success: true });
           return;
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
           setTestMessage((prev) => ({ ...prev, [presetKey]: `SiliconFlow test error: ${String(e)}` }));
+          trackProviderEvent({ action: "test", provider: presetKey, success: false, error_message: String(e) });
           return;
         }
       }
@@ -474,17 +485,27 @@ export function SettingsView({
               ...prev,
               [presetKey]: `${label} test failed (${result.status}): ${result.body || "No response body"}`,
             }));
+            trackProviderEvent({ action: "test", provider: presetKey, model, success: false, error_message: `${result.status}` });
             return;
           }
+          setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: "Connected" }));
+          trackProviderEvent({ action: "test", provider: presetKey, model, success: true });
+          return;
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
           setTestMessage((prev) => ({ ...prev, [presetKey]: `${label} test error: ${String(e)}` }));
+          trackProviderEvent({ action: "test", provider: presetKey, model, success: false, error_message: String(e) });
           return;
         }
       }
 
       setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
       setTestMessage((prev) => ({ ...prev, [presetKey]: "" }));
+      // Track success for providers without specific test logic (univibe/siliconflow/zenmux/modelgate already tracked above)
+      if (!["univibe", "siliconflow", "zenmux", "modelgate"].includes(presetKey)) {
+        trackProviderEvent({ action: "test", provider: presetKey, success: true });
+      }
     } catch (e) {
       setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
       setTestMessage((prev) => ({ ...prev, [presetKey]: `Invalid template JSON: ${String(e)}` }));
@@ -566,6 +587,7 @@ export function SettingsView({
       await invoke("install_setting_template", { config: JSON.stringify(parsed, null, 2) });
       refreshSettings();
       setApplyStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+      trackProviderEvent({ action: "apply", provider: presetKey, model: selectedModels[presetKey], success: true });
 
       if (presetKey === "anthropic-subscription") {
         setApplyHint((prev) => ({
@@ -580,6 +602,7 @@ export function SettingsView({
     } catch (e) {
       setApplyStatus((prev) => ({ ...prev, [presetKey]: "error" }));
       setApplyError(String(e));
+      trackProviderEvent({ action: "apply", provider: presetKey, model: selectedModels[presetKey], success: false, error_message: String(e) });
     }
   };
 
@@ -1178,6 +1201,27 @@ export function SettingsView({
               )}
             </TabsContent>
           </Tabs>
+
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div>
+              <p className="text-xs font-medium text-ink">Usage Analytics</p>
+              <p className="text-[10px] text-muted-foreground">
+                Help improve Lovcode by sending anonymous usage data
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={analyticsEnabled}
+                onChange={(e) => {
+                  setAnalyticsEnabledState(e.target.checked);
+                  setAnalyticsEnabled(e.target.checked);
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" />
+            </label>
+          </div>
         </CollapsibleCard>
       )}
 
