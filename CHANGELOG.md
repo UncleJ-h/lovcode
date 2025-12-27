@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.0
+
+### Minor Changes
+
+- 添加硅基流动 LLM Provider 支持
+
 ## 0.13.0
 
 ### Minor Changes
