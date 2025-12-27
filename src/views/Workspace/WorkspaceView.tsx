@@ -1,15 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useEffect, useCallback, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
-import { selectedFileAtom, activePanelIdAtom, workspaceDataAtom, workspaceLoadingAtom } from "@/store";
+import { activePanelIdAtom, workspaceDataAtom, workspaceLoadingAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { FeatureSidebar } from "./FeatureSidebar";
 import { ProjectHomeView } from "./ProjectHomeView";
 import { ProjectDashboard } from "./ProjectDashboard";
 import { PanelGrid } from "../../components/PanelGrid";
-import { FileViewer } from "../../components/FileViewer";
 import type { PanelState } from "../../components/PanelGrid";
 import { disposeTerminal } from "../../components/Terminal";
 import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelState as StoredPanelState, SessionState as StoredSessionState, LayoutNode } from "./types";
@@ -17,11 +15,7 @@ import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelStat
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [loading, setLoading] = useAtom(workspaceLoadingAtom);
-  const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(() => {
-    return localStorage.getItem("feature-sidebar-collapsed") === "true";
-  });
   const [activePanelId, setActivePanelId] = useAtom(activePanelIdAtom);
-  const [selectedFile, setSelectedFile] = useAtom(selectedFileAtom);
 
   // Load workspace data and reset running features (PTY sessions don't survive restarts)
   useEffect(() => {
@@ -52,11 +46,6 @@ export function WorkspaceView() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
-
-  // Persist sidebar collapsed state
-  useEffect(() => {
-    localStorage.setItem("feature-sidebar-collapsed", String(sharedPanelCollapsed));
-  }, [sharedPanelCollapsed]);
 
   // Listen for feature-complete events
   useEffect(() => {
@@ -171,29 +160,6 @@ export function WorkspaceView() {
       return undefined;
     }
   }, [activeProject, workspace, saveWorkspace]);
-
-  // Rename feature
-  const handleRenameFeature = useCallback(async (featureId: string, name: string) => {
-    if (!activeProject || !workspace) return;
-
-    try {
-      await invoke("workspace_rename_feature", { featureId, name });
-      const newProjects = workspace.projects.map((p) =>
-        p.id === activeProject.id
-          ? {
-              ...p,
-              features: p.features.map((f) =>
-                f.id === featureId ? { ...f, name } : f
-              ),
-            }
-          : p
-      );
-      saveWorkspace({ ...workspace, projects: newProjects });
-    } catch (err) {
-      console.error("Failed to rename feature:", err);
-    }
-  }, [activeProject, workspace, saveWorkspace]);
-
 
   // Update feature status from dashboard (no auto-archive)
   const handleDashboardFeatureStatusChange = useCallback(
@@ -385,39 +351,6 @@ export function WorkspaceView() {
     // Focus the new panel
     setActivePanelId(panelId);
   }, [activeProject, activeFeature, workspace, saveWorkspace, setActivePanelId]);
-
-  // Add pinned panel handler
-  const handleAddPinnedPanel = useCallback(() => {
-    if (!activeProject || !workspace) return;
-
-    const panelId = crypto.randomUUID();
-    const sessionId = crypto.randomUUID();
-    const ptyId = crypto.randomUUID();
-
-    const newPanel: StoredPanelState = {
-      id: panelId,
-      sessions: [{ id: sessionId, pty_id: ptyId, title: "Pinned" }],
-      active_session_id: sessionId,
-      is_shared: true,
-      cwd: activeProject.path,
-    };
-
-    const newProjects = workspace.projects.map((p) => {
-      if (p.id !== activeProject.id) return p;
-      return {
-        ...p,
-        shared_panels: [...(p.shared_panels || []), newPanel],
-      };
-    });
-
-    saveWorkspace({
-      ...workspace,
-      projects: newProjects,
-    });
-
-    // Focus the new pinned panel
-    setActivePanelId(panelId);
-  }, [activeProject, workspace, saveWorkspace, setActivePanelId]);
 
   // Close panel handler
   const handlePanelClose = useCallback(
@@ -902,39 +835,6 @@ export function WorkspaceView() {
     return map;
   }, [activeProject?.features, activeProject?.path]);
 
-  // Same caching pattern for shared panels
-  const sharedSessionCacheRef = useRef(new Map<string, { id: string; ptyId: string; title: string; command?: string }>());
-
-  const sharedPanels = useMemo<PanelState[]>(() => {
-    const cache = sharedSessionCacheRef.current;
-    const usedSessionIds = new Set<string>();
-
-    const result = (activeProject?.shared_panels || []).map((p) => ({
-      id: p.id,
-      sessions: (p.sessions || []).map((s) => {
-        usedSessionIds.add(s.id);
-        const cached = cache.get(s.id);
-        if (cached && cached.ptyId === s.pty_id) {
-          cached.title = s.title;
-          cached.command = s.command;
-          return cached;
-        }
-        const session = { id: s.id, ptyId: s.pty_id, title: s.title, command: s.command };
-        cache.set(s.id, session);
-        return session;
-      }),
-      activeSessionId: p.active_session_id,
-      isShared: true,
-      cwd: activeProject?.path || "",
-    }));
-
-    for (const id of cache.keys()) {
-      if (!usedSessionIds.has(id)) cache.delete(id);
-    }
-
-    return result;
-  }, [activeProject?.shared_panels, activeProject?.path]);
-
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-canvas">
@@ -945,128 +845,84 @@ export function WorkspaceView() {
 
   return (
     <div className="h-full flex flex-col bg-canvas">
-      <div className="flex-1 flex min-h-0">
-        {/* Main content area */}
-        <div className="flex-1 flex min-w-0">
-          {activeProject ? (
-            activeProject.view_mode === "dashboard" ? (
-              /* Dashboard view - full width without FeatureSidebar */
-              <ProjectDashboard
-                project={activeProject}
-                onFeatureClick={handleDashboardFeatureClick}
-                onFeatureStatusChange={handleDashboardFeatureStatusChange}
-                onAddFeature={() => handleAddFeature(activeProject.id)}
-              />
-            ) : (
-            <>
-              {/* Feature sidebar with pinned sessions */}
-              <FeatureSidebar
-                projectName={activeProject.name}
-                projectPath={activeProject.path}
-                featureName={activeFeature?.name}
-                pinnedPanels={sharedPanels}
-                onAddPinnedPanel={handleAddPinnedPanel}
-                onPanelClose={handlePanelClose}
-                onPanelToggleShared={handlePanelToggleShared}
-                onPanelReload={handlePanelReload}
-                onSessionAdd={handleSessionAdd}
-                onSessionClose={handleSessionClose}
-                onSessionSelect={handleSessionSelect}
-                onSessionTitleChange={handleSessionTitleChange}
-                collapsed={sharedPanelCollapsed}
-                onCollapsedChange={setSharedPanelCollapsed}
-                activePanelId={activePanelId}
-                onPanelFocus={setActivePanelId}
-                onFileClick={setSelectedFile}
-                selectedFile={selectedFile}
-                onFeatureRename={activeFeature ? (name) => handleRenameFeature(activeFeature.id, name) : undefined}
-              />
-
-              {/* Main content area */}
-              <div className="flex-1 min-w-0 h-full">
-                {selectedFile ? (
-                  <FileViewer
-                    filePath={selectedFile}
-                    onClose={() => setSelectedFile(null)}
-                  />
-                ) : activeProject.view_mode === "home" ? (
-                  <ProjectHomeView
-                    projectPath={activeProject.path}
-                    projectName={activeProject.name}
-                  />
-                ) : activeFeature ? (
-                  <div className="h-full relative">
-                    {/* Render ALL features but hide inactive ones to keep PTY alive */}
-                    {activeProject?.features.map((feature) => {
-                      const isActive = feature.id === activeFeature.id;
-                      const featurePanels = allFeaturePanels.get(feature.id) || [];
-                      if (!isActive && featurePanels.length === 0) return null;
-                      return (
-                        <div
-                          key={feature.id}
-                          className={`absolute inset-0 ${
-                            isActive ? "" : "invisible pointer-events-none"
-                          }`}
-                        >
-                          <PanelGrid
-                            panels={featurePanels}
-                            layout={feature.layout}
-                            activePanelId={activePanelId}
-                            onPanelFocus={setActivePanelId}
-                            onPanelClose={handlePanelClose}
-                            onPanelSplit={handlePanelSplit}
-                            onPanelToggleShared={handlePanelToggleShared}
-                            onPanelReload={handlePanelReload}
-                            onSessionAdd={handleSessionAdd}
-                            onSessionClose={handleSessionClose}
-                            onSessionSelect={handleSessionSelect}
-                            onSessionTitleChange={handleSessionTitleChange}
-                            onInitialPanelCreate={handleInitialPanelCreate}
-                            direction={feature.layout_direction || "horizontal"}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <p className="text-muted-foreground mb-4">
-                        No features yet
-                      </p>
-                      <button
-                        onClick={() => handleAddFeature(activeProject?.id)}
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                      >
-                        Create First Feature
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-            )
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <h2 className="font-serif text-2xl font-bold text-ink mb-2">
-                  Welcome to Workspace
-                </h2>
-                <p className="text-muted-foreground mb-6">
-                  Add a project to start parallel vibe coding
-                </p>
-                <button
-                  onClick={handleAddProject}
-                  className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+      {activeProject ? (
+        activeProject.view_mode === "dashboard" ? (
+          <ProjectDashboard
+            project={activeProject}
+            onFeatureClick={handleDashboardFeatureClick}
+            onFeatureStatusChange={handleDashboardFeatureStatusChange}
+            onAddFeature={() => handleAddFeature(activeProject.id)}
+          />
+        ) : activeProject.view_mode === "home" ? (
+          <ProjectHomeView
+            projectPath={activeProject.path}
+            projectName={activeProject.name}
+          />
+        ) : activeFeature ? (
+          <div className="flex-1 min-h-0 relative">
+            {/* Render ALL features but hide inactive ones to keep PTY alive */}
+            {activeProject?.features.map((feature) => {
+              const isActive = feature.id === activeFeature.id;
+              const featurePanels = allFeaturePanels.get(feature.id) || [];
+              if (!isActive && featurePanels.length === 0) return null;
+              return (
+                <div
+                  key={feature.id}
+                  className={`absolute inset-0 ${
+                    isActive ? "" : "invisible pointer-events-none"
+                  }`}
                 >
-                  Add Your First Project
-                </button>
-              </div>
+                  <PanelGrid
+                    panels={featurePanels}
+                    layout={feature.layout}
+                    activePanelId={activePanelId}
+                    onPanelFocus={setActivePanelId}
+                    onPanelClose={handlePanelClose}
+                    onPanelSplit={handlePanelSplit}
+                    onPanelToggleShared={handlePanelToggleShared}
+                    onPanelReload={handlePanelReload}
+                    onSessionAdd={handleSessionAdd}
+                    onSessionClose={handleSessionClose}
+                    onSessionSelect={handleSessionSelect}
+                    onSessionTitleChange={handleSessionTitleChange}
+                    onInitialPanelCreate={handleInitialPanelCreate}
+                    direction={feature.layout_direction || "horizontal"}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-muted-foreground mb-4">No features yet</p>
+              <button
+                onClick={() => handleAddFeature(activeProject?.id)}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Create First Feature
+              </button>
             </div>
-          )}
+          </div>
+        )
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="font-serif text-2xl font-bold text-ink mb-2">
+              Welcome to Workspace
+            </h2>
+            <p className="text-muted-foreground mb-6">
+              Add a project to start parallel vibe coding
+            </p>
+            <button
+              onClick={handleAddProject}
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Add Your First Project
+            </button>
+          </div>
         </div>
-      </div>
-
+      )}
     </div>
   );
 }
