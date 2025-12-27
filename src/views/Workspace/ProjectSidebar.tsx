@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, DashboardIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon, DrawingPinIcon, TrashIcon, Pencil1Icon } from "@radix-ui/react-icons";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, DashboardIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon, DrawingPinIcon, TrashIcon, Pencil1Icon, DoubleArrowLeftIcon, DoubleArrowRightIcon } from "@radix-ui/react-icons";
 import { ProjectLogo } from "./ProjectLogo";
+import { useResize } from "../../hooks/useResize";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,6 +38,8 @@ interface ProjectSidebarProps {
   onDeleteFeature?: (projectId: string, featureId: string) => void;
   onPinFeature?: (projectId: string, featureId: string, pinned: boolean) => void;
   onChangeFeatureStatus?: (projectId: string, featureId: string, status: FeatureStatus) => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 export function ProjectSidebar({
@@ -56,6 +59,8 @@ export function ProjectSidebar({
   onDeleteFeature,
   onPinFeature,
   onChangeFeatureStatus,
+  collapsed,
+  onCollapsedChange,
 }: ProjectSidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() =>
     new Set(activeProjectId ? [activeProjectId] : [])
@@ -66,6 +71,14 @@ export function ProjectSidebar({
   const renameJustStartedRef = useRef(false);
   const pendingRenameRef = useRef<{ featureId: string; featureName: string } | null>(null);
   const isComposingRef = useRef(false);
+
+  const { value: width, handleMouseDown } = useResize({
+    direction: "horizontal",
+    storageKey: "project-sidebar-width",
+    defaultValue: 192, // w-48 = 12rem = 192px
+    min: 140,
+    max: 320,
+  });
 
   // Auto-expand active project
   useEffect(() => {
@@ -129,7 +142,10 @@ export function ProjectSidebar({
   }, [renameValue, onRenameFeature]);
 
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, projectId: string, featureId: string, originalName: string) => {
-    if (e.key === "Enter" && !isComposingRef.current) {
+    // keyCode 229 = IME processing, ignore it
+    if (e.keyCode === 229) return;
+    if (e.key === "Enter") {
+      if (isComposingRef.current || e.nativeEvent.isComposing) return;
       handleRenameSubmit(projectId, featureId, originalName);
     } else if (e.key === "Escape") {
       setRenamingFeatureId(null);
@@ -139,8 +155,86 @@ export function ProjectSidebar({
   const activeProjects = projects.filter((p) => !p.archived);
   const archivedProjects = projects.filter((p) => p.archived);
 
+  // Collapsed state
+  if (collapsed) {
+    return (
+      <div className="h-full flex flex-col bg-card border-r border-border w-10">
+        <div className="flex items-center justify-center py-1.5 border-b border-border">
+          <button
+            onClick={() => onCollapsedChange?.(false)}
+            className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
+            title="Expand sidebar"
+          >
+            <DoubleArrowRightIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="flex-1 flex flex-col items-center pt-2 gap-1 overflow-y-auto">
+          {activeProjects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => onOpenDashboard(project.id)}
+              className={`p-1 rounded transition-colors ${
+                project.id === activeProjectId
+                  ? "bg-primary/10"
+                  : "hover:bg-card-alt"
+              }`}
+              title={project.name}
+            >
+              <ProjectLogo projectPath={project.path} size="sm" />
+            </button>
+          ))}
+        </div>
+        <div className="p-2 border-t border-border flex flex-col items-center gap-1">
+          <button
+            onClick={onAddProject}
+            className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
+            title="Add project"
+          >
+            <PlusIcon className="w-4 h-4" />
+          </button>
+          {archivedProjects.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors">
+                <ArchiveIcon className="w-4 h-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[160px]">
+                {archivedProjects.map((project) => (
+                  <DropdownMenuItem
+                    key={project.id}
+                    onClick={() => onUnarchiveProject(project.id)}
+                    className="cursor-pointer"
+                  >
+                    <span className="truncate">{project.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-48 flex flex-col border-r border-border bg-card">
+    <div className="flex flex-col border-r border-border bg-card relative" style={{ width }}>
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute -right-1.5 top-0 bottom-0 w-3 cursor-col-resize z-10 group"
+      >
+        <div className="absolute right-1.5 top-0 bottom-0 w-0.5 group-hover:bg-primary/50 transition-colors" />
+      </div>
+      {/* Header with collapse button */}
+      <div className="flex items-center px-3 py-1.5 border-b border-border">
+        <span className="flex-1 text-sm font-medium text-ink">Projects</span>
+        <button
+          onClick={() => onCollapsedChange?.(true)}
+          className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors rounded"
+          title="Collapse sidebar"
+        >
+          <DoubleArrowLeftIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
       <div className="flex-1 overflow-y-auto py-2">
         {activeProjects.map((project) => {
             const isActive = project.id === activeProjectId;

@@ -21,6 +21,9 @@ export function WorkspaceView() {
   const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(() => {
     return localStorage.getItem("feature-sidebar-collapsed") === "true";
   });
+  const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(() => {
+    return localStorage.getItem("project-sidebar-collapsed") === "true";
+  });
   const [activePanelId, setActivePanelId] = useAtom(activePanelIdAtom);
   const [selectedFile, setSelectedFile] = useAtom(selectedFileAtom);
 
@@ -54,10 +57,14 @@ export function WorkspaceView() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Persist sidebar collapsed state
+  // Persist sidebar collapsed states
   useEffect(() => {
     localStorage.setItem("feature-sidebar-collapsed", String(sharedPanelCollapsed));
   }, [sharedPanelCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem("project-sidebar-collapsed", String(projectSidebarCollapsed));
+  }, [projectSidebarCollapsed]);
 
   // Listen for feature-complete events
   useEffect(() => {
@@ -1176,6 +1183,8 @@ export function WorkspaceView() {
             const project = workspace?.projects.find(p => p.id === projectId);
             if (project) handleRenameFeature(featureId, name);
           }}
+          collapsed={projectSidebarCollapsed}
+          onCollapsedChange={setProjectSidebarCollapsed}
         />
 
         {/* Main content area */}
