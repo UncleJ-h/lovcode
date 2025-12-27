@@ -11,7 +11,8 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArchiveIcon } from "@radix-ui/react-icons";
+import { ArchiveIcon, PlusIcon } from "@radix-ui/react-icons";
+import { open } from "@tauri-apps/plugin-dialog";
 import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FeatureTabGroup } from "./FeatureTabGroup";
 import { FeatureTab } from "./FeatureTab";
-import type { Feature, WorkspaceData } from "@/views/Workspace/types";
+import type { Feature, WorkspaceData, WorkspaceProject } from "@/views/Workspace/types";
 
 export function GlobalFeatureTabs() {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
@@ -54,6 +55,32 @@ export function GlobalFeatureTabs() {
     };
     setWorkspace(newWorkspace);
     await invoke("workspace_save", { data: newWorkspace });
+  };
+
+  const handleAddProject = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select Project Directory",
+      });
+
+      if (selected && typeof selected === "string") {
+        const project = await invoke<WorkspaceProject>("workspace_add_project", {
+          path: selected,
+        });
+
+        const newWorkspace: WorkspaceData = {
+          ...workspace,
+          projects: [...workspace.projects, project],
+          active_project_id: project.id,
+        };
+        setWorkspace(newWorkspace);
+        await invoke("workspace_save", { data: newWorkspace });
+      }
+    } catch (err) {
+      console.error("Failed to add project:", err);
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -128,7 +155,7 @@ export function GlobalFeatureTabs() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex items-center gap-1 overflow-x-auto max-w-[calc(100vw-500px)]">
+      <div className="flex items-center gap-1 overflow-x-auto max-w-[calc(100vw-500px)] scrollbar-thin">
         {activeProjects.map((project) => {
           const activeFeatures = project.features.filter(f => !f.archived);
 
@@ -165,6 +192,15 @@ export function GlobalFeatureTabs() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        {/* Add Project Button */}
+        <button
+          onClick={handleAddProject}
+          className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors flex-shrink-0"
+          title="Add Project"
+        >
+          <PlusIcon className="w-4 h-4" />
+        </button>
       </div>
       <DragOverlay>
         {activeFeature && (

@@ -198,7 +198,7 @@ export function FeatureTab({
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
           onPointerDown={(e) => e.stopPropagation()}
-          className={`group flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-colors ${
+          className={`group flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-colors max-w-[140px] ${
             isDragging
               ? "bg-primary/20 shadow-lg"
               : isActive
@@ -209,9 +209,9 @@ export function FeatureTab({
           {feature.pinned && (
             <DrawingPinFilledIcon className="w-2.5 h-2.5 text-primary/70 flex-shrink-0" />
           )}
-          <StatusIcon status={feature.status} />
+          <span className="flex-shrink-0"><StatusIcon status={feature.status} /></span>
           {feature.seq > 0 && (
-            <span className="text-[10px] text-muted-foreground/60">#{feature.seq}</span>
+            <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">#{feature.seq}</span>
           )}
           {isRenaming ? (
             <input
@@ -223,10 +223,10 @@ export function FeatureTab({
               onCompositionStart={() => { isComposingRef.current = true; }}
               onCompositionEnd={() => { isComposingRef.current = false; }}
               onClick={(e) => e.stopPropagation()}
-              className="w-16 text-xs bg-card border border-border rounded px-1 outline-none focus:border-primary"
+              className="w-16 text-xs bg-card border border-border rounded px-1 outline-none focus:border-primary flex-shrink-0"
             />
           ) : (
-            <span className="text-xs truncate max-w-[60px]" title={feature.name}>
+            <span className="text-xs truncate min-w-0" title={feature.name}>
               {feature.name}
             </span>
           )}
@@ -236,7 +236,7 @@ export function FeatureTab({
               e.stopPropagation();
               handleArchive();
             }}
-            className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
+            className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all flex-shrink-0"
             title="Archive"
           >
             <Cross2Icon className="w-3 h-3" />
@@ -333,7 +333,7 @@ export function SortableFeatureTab(props: Omit<FeatureTabProps, "isDragging">) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex-shrink-0">
       <FeatureTab {...props} isDragging={isDragging} />
     </div>
   );

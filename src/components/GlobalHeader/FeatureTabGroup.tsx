@@ -45,7 +45,11 @@ export function FeatureTabGroup({
 
   const toggleCollapsed = () => {
     if (isCollapsed) {
-      setCollapsedGroups(collapsedGroups.filter(id => id !== project.id));
+      // Expand this project, collapse all others
+      const otherProjectIds = workspace?.projects
+        .filter(p => p.id !== project.id && !p.archived)
+        .map(p => p.id) ?? [];
+      setCollapsedGroups(otherProjectIds);
     } else {
       setCollapsedGroups([...collapsedGroups, project.id]);
     }
@@ -221,7 +225,7 @@ export function FeatureTabGroup({
   if (isCollapsed) {
     // Collapsed view: just project name with count
     return (
-      <div className="flex items-center">
+      <div className="flex items-center flex-shrink-0">
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <button
@@ -237,7 +241,7 @@ export function FeatureTabGroup({
                 <span className="text-xs font-medium truncate max-w-[80px]">{projectDisplayName}</span>
               )}
               {features.length > 0 && (
-                <span className="text-xs text-muted-foreground">({features.length})</span>
+                <span className="text-xs text-muted-foreground">{features.length}</span>
               )}
             </button>
           </ContextMenuTrigger>
@@ -250,7 +254,7 @@ export function FeatureTabGroup({
 
   // Expanded view: project header + tabs with underline indicator
   return (
-    <div className="flex items-center">
+    <div className="flex items-center flex-shrink-0">
       <div
         className={`relative flex items-center gap-0.5 px-1 pb-1 after:absolute after:bottom-0 after:left-1 after:right-1 after:h-0.5 after:rounded-full ${
           isActiveProject ? "after:bg-primary" : "after:bg-border"
@@ -262,7 +266,7 @@ export function FeatureTabGroup({
             <button
               onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
               onPointerDown={(e) => e.stopPropagation()}
-              className={`flex items-center px-1 py-1 rounded transition-colors ${
+              className={`flex items-center px-1 py-1 rounded transition-colors flex-shrink-0 ${
                 isActiveProject ? "text-primary" : "text-muted-foreground hover:text-ink"
               }`}
               title={projectDisplayName}
