@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.16.0
+
+### Minor Changes
+
+- 50e71ea: Add StatuslineView and marketplace support
+
+  - StatuslineView for editing Claude Code statusline configuration
+  - Marketplace directory with statusline templates
+  - Enhanced MarkdownRenderer with new capabilities
+
 ## 0.15.0
 
 ### Minor Changes
