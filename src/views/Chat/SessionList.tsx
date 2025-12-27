@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon, GlobeIcon, ChatBubbleIcon } from "@radix-ui/react-icons";
@@ -8,6 +8,7 @@ import { useAtom } from "jotai";
 import { sessionContextTabAtom, sessionSelectModeAtom, hideEmptySessionsAtom, userPromptsOnlyAtom } from "../../store";
 import { useAppConfig } from "../../context";
 import { formatDate } from "./utils";
+import { useInvokeQuery } from "../../hooks";
 import type { Session, ContextFile, Message, SearchResult } from "../../types";
 
 interface SessionListProps {
@@ -19,10 +20,26 @@ interface SessionListProps {
 
 export function SessionList({ projectId, projectPath, onBack, onSelect }: SessionListProps) {
   const { formatPath } = useAppConfig();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [globalContext, setGlobalContext] = useState<ContextFile[]>([]);
-  const [projectContext, setProjectContext] = useState<ContextFile[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Use react-query for cached data
+  const { data: sessions = [], isLoading: loadingSessions } = useInvokeQuery<Session[]>(
+    ["sessions", projectId],
+    "list_sessions",
+    { projectId }
+  );
+  const { data: allContextFiles = [], isLoading: loadingContext } = useInvokeQuery<ContextFile[]>(
+    ["contextFiles"],
+    "get_context_files"
+  );
+  const { data: projectContext = [] } = useInvokeQuery<ContextFile[]>(
+    ["projectContext", projectPath],
+    "get_project_context",
+    { projectPath },
+  );
+
+  const globalContext = useMemo(() => allContextFiles.filter((f) => f.scope === "global"), [allContextFiles]);
+  const loading = loadingSessions || loadingContext;
+
   const [contextTab, setContextTab] = useAtom(sessionContextTabAtom);
   const [selectMode, setSelectMode] = useAtom(sessionSelectModeAtom);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -34,20 +51,6 @@ export function SessionList({ projectId, projectPath, onBack, onSelect }: Sessio
   const [searching, setSearching] = useState(false);
 
   const filteredSessions = hideEmptySessions ? sessions.filter((s) => s.message_count > 0) : sessions;
-
-  useEffect(() => {
-    Promise.all([
-      invoke<Session[]>("list_sessions", { projectId }),
-      invoke<ContextFile[]>("get_context_files"),
-      projectPath ? invoke<ContextFile[]>("get_project_context", { projectPath }) : Promise.resolve([]),
-    ])
-      .then(([s, global, project]) => {
-        setSessions(s);
-        setGlobalContext(global.filter((f) => f.scope === "global"));
-        setProjectContext(project);
-      })
-      .finally(() => setLoading(false));
-  }, [projectId, projectPath]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {

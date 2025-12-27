@@ -1,6 +1,7 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FlaskConical } from "lucide-react";
+import { useInvokeQuery, useQueryClient } from "../../hooks";
 import {
   GearIcon,
   CheckIcon,
@@ -16,6 +17,7 @@ import {
   ExternalLinkIcon,
 } from "@radix-ui/react-icons";
 import { Button } from "../../components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import {
   LoadingState,
@@ -61,10 +63,13 @@ export function SettingsView({
     </div>
   );
 
-  const [settings, setSettings] = useState<ClaudeSettings | null>(null);
-  const [contextFiles, setContextFiles] = useState<ContextFile[]>([]);
-  const [settingsPath, setSettingsPath] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: settings, isLoading: loadingSettings } = useInvokeQuery<ClaudeSettings>(["settings"], "get_settings");
+  const { data: allContextFiles = [] } = useInvokeQuery<ContextFile[]>(["contextFiles"], "get_context_files");
+  const { data: settingsPath = "" } = useInvokeQuery<string>(["settingsPath"], "get_settings_path");
+
+  const contextFiles = useMemo(() => allContextFiles.filter((f) => f.scope === "global"), [allContextFiles]);
+
   const [search, setSearch] = useState("");
   const [applyStatus, setApplyStatus] = useState<Record<string, "idle" | "loading" | "success" | "error">>({});
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -84,29 +89,19 @@ export function SettingsView({
     univibe: "claude-sonnet-4-5-20250929",
   });
 
+  // Initialize selected model from current env
   useEffect(() => {
-    Promise.all([
-      invoke<ClaudeSettings>("get_settings"),
-      invoke<ContextFile[]>("get_context_files"),
-      invoke<string>("get_settings_path"),
-    ])
-      .then(([s, c, p]) => {
-        setSettings(s);
-        setContextFiles(c.filter((f) => f.scope === "global"));
-        setSettingsPath(p);
-        // Initialize selected model from current env
-        const envValue = s?.raw && typeof s.raw === "object" ? (s.raw as Record<string, unknown>).env : null;
-        if (envValue && typeof envValue === "object") {
-          const currentModel = (envValue as Record<string, unknown>).ANTHROPIC_MODEL;
-          if (typeof currentModel === "string" && currentModel) {
-            setSelectedModels((prev) => ({ ...prev, univibe: currentModel }));
-          }
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    if (!settings) return;
+    const envValue = settings.raw && typeof settings.raw === "object" ? (settings.raw as Record<string, unknown>).env : null;
+    if (envValue && typeof envValue === "object") {
+      const currentModel = (envValue as Record<string, unknown>).ANTHROPIC_MODEL;
+      if (typeof currentModel === "string" && currentModel) {
+        setSelectedModels((prev) => ({ ...prev, univibe: currentModel }));
+      }
+    }
+  }, [settings]);
 
-  if (loading) return <LoadingState message="Loading settings..." />;
+  if (loadingSettings) return <LoadingState message="Loading settings..." />;
 
   const hasContent = settings?.raw || contextFiles.length > 0;
 
@@ -117,7 +112,7 @@ export function SettingsView({
   const settingsMatchSearch =
     !search || JSON.stringify(settings?.raw || {}).toLowerCase().includes(search.toLowerCase());
 
-  const getActiveProvider = (value: ClaudeSettings | null): string | null => {
+  const getActiveProvider = (value: ClaudeSettings | null | undefined): string | null => {
     const lovcode =
       value?.raw && typeof value.raw === "object"
         ? (value.raw as Record<string, unknown>).lovcode
@@ -129,7 +124,7 @@ export function SettingsView({
 
   const activeProvider = getActiveProvider(settings);
 
-  const getRawEnvFromSettings = (value: ClaudeSettings | null) => {
+  const getRawEnvFromSettings = (value: ClaudeSettings | null | undefined) => {
     const envValue =
       value?.raw && typeof value.raw === "object"
         ? (value.raw as Record<string, unknown>).env
@@ -140,7 +135,7 @@ export function SettingsView({
     );
   };
 
-  const getCustomEnvKeysFromSettings = (value: ClaudeSettings | null): string[] => {
+  const getCustomEnvKeysFromSettings = (value: ClaudeSettings | null | undefined): string[] => {
     const keys =
       value?.raw && typeof value.raw === "object"
         ? (value.raw as Record<string, unknown>)._lovcode_custom_env_keys
@@ -149,7 +144,7 @@ export function SettingsView({
     return keys.filter((k): k is string => typeof k === "string");
   };
 
-  const getDisabledEnvFromSettings = (value: ClaudeSettings | null): Record<string, string> => {
+  const getDisabledEnvFromSettings = (value: ClaudeSettings | null | undefined): Record<string, string> => {
     const disabled =
       value?.raw && typeof value.raw === "object"
         ? (value.raw as Record<string, unknown>)._lovcode_disabled_env
@@ -272,7 +267,7 @@ export function SettingsView({
       path: "fallback/modelgate-anthropic-proxy.json",
       description: "ModelGate API gateway for Claude.",
       downloads: null,
-      content: JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "your_modelgate_api_key" } }, null, 2),
+      content: JSON.stringify({ env: { MODELGATE_API_KEY: "your_modelgate_api_key" } }, null, 2),
     },
   };
 
@@ -361,13 +356,9 @@ export function SettingsView({
 
       setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
 
-      if (presetKey === "univibe" || presetKey === "modelgate") {
+      if (presetKey === "univibe") {
         const authToken = (envSource.ANTHROPIC_AUTH_TOKEN || "").trim();
-        const defaultBaseUrl = presetKey === "univibe"
-          ? "https://api.univibe.cc/anthropic"
-          : "https://api.modelgate.net";
-        const baseUrl = envSource.ANTHROPIC_BASE_URL || defaultBaseUrl;
-        const label = presetKey === "univibe" ? "UniVibe" : "ModelGate";
+        const baseUrl = envSource.ANTHROPIC_BASE_URL || "https://api.univibe.cc/anthropic";
 
         try {
           const result = await invoke<{ ok: boolean; code: number; stdout: string; stderr: string }>("test_claude_cli", {
@@ -379,25 +370,30 @@ export function SettingsView({
             setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
             setTestMessage((prev) => ({
               ...prev,
-              [presetKey]: `${label} test failed (${result.code}): ${result.stderr || result.stdout || "No output"}`,
+              [presetKey]: `UniVibe test failed (${result.code}): ${result.stderr || result.stdout || "No output"}`,
             }));
             return;
           }
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
-          setTestMessage((prev) => ({ ...prev, [presetKey]: `${label} test error: ${String(e)}` }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `UniVibe test error: ${String(e)}` }));
           return;
         }
       }
 
-      if (presetKey === "zenmux") {
+      if (presetKey === "zenmux" || presetKey === "modelgate") {
         const authToken = (
           envSource.ZENMUX_API_KEY ||
+          envSource.MODELGATE_API_KEY ||
           envSource.ANTHROPIC_AUTH_TOKEN ||
           ""
         ).trim();
-        const baseUrl = envSource.ANTHROPIC_BASE_URL || "https://zenmux.ai/api/anthropic";
+        const defaultBaseUrl = presetKey === "zenmux"
+          ? "https://zenmux.ai/api/anthropic"
+          : "https://mg.aid.pub/claude-proxy";
+        const baseUrl = envSource.ANTHROPIC_BASE_URL || defaultBaseUrl;
         const model = envSource.ANTHROPIC_DEFAULT_SONNET_MODEL || envSource.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4.5";
+        const label = presetKey === "zenmux" ? "ZenMux" : "ModelGate";
 
         try {
           const result = await invoke<{ ok: boolean; status: number; body: string }>("test_zenmux_connection", {
@@ -410,13 +406,13 @@ export function SettingsView({
             setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
             setTestMessage((prev) => ({
               ...prev,
-              [presetKey]: `ZenMux test failed (${result.status}): ${result.body || "No response body"}`,
+              [presetKey]: `${label} test failed (${result.status}): ${result.body || "No response body"}`,
             }));
             return;
           }
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
-          setTestMessage((prev) => ({ ...prev, [presetKey]: `ZenMux test error: ${String(e)}` }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `${label} test error: ${String(e)}` }));
           return;
         }
       }
@@ -433,6 +429,7 @@ export function SettingsView({
   const presetEnvKeyMappings: Record<string, Record<string, string>> = {
     zenmux: { ZENMUX_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
     qiniu: { QINIU_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
+    modelgate: { MODELGATE_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
   };
 
   const presetExtraEnv: Record<string, Record<string, string>> = {
@@ -447,7 +444,7 @@ export function SettingsView({
       ANTHROPIC_API_KEY: "",
     },
     modelgate: {
-      ANTHROPIC_BASE_URL: "https://api.modelgate.net",
+      ANTHROPIC_BASE_URL: "https://mg.aid.pub/claude-proxy",
       ANTHROPIC_API_KEY: "",
     },
   };
@@ -497,8 +494,7 @@ export function SettingsView({
       parsed.lovcode = { activeProvider: presetKey };
 
       await invoke("install_setting_template", { config: JSON.stringify(parsed, null, 2) });
-      const updated = await invoke<ClaudeSettings>("get_settings");
-      setSettings(updated);
+      refreshSettings();
       setApplyStatus((prev) => ({ ...prev, [presetKey]: "success" }));
 
       if (presetKey === "anthropic-subscription") {
@@ -517,10 +513,8 @@ export function SettingsView({
     }
   };
 
-  const refreshSettings = async () => {
-    const updated = await invoke<ClaudeSettings>("get_settings");
-    setSettings(updated);
-    return updated;
+  const refreshSettings = () => {
+    queryClient.invalidateQueries({ queryKey: ["settings"] });
   };
 
   const handleEnvEdit = (key: string, value: string, isDisabled = false) => {
@@ -581,7 +575,9 @@ export function SettingsView({
     await Promise.all(
       missingKeys.map((key) => invoke("update_settings_env", { envKey: key, envValue: values[key] ?? "" }))
     );
-    const updated = await refreshSettings();
+    refreshSettings();
+    // Fetch fresh settings for immediate test
+    const updated = await invoke<ClaudeSettings>("get_settings");
     const updatedEnv = getRawEnvFromSettings(updated);
     await handleTestPreset(presetKey, updatedEnv);
   };
@@ -593,6 +589,253 @@ export function SettingsView({
   const getMissingEnvPlaceholder = (key: string) => {
     if (/proxy/i.test(key)) return "http://localhost:7890";
     return "value";
+  };
+
+  const officialProviderKeys = new Set(["anthropic-subscription", "native"]);
+  const officialPresets = filteredPresets.filter((preset) => officialProviderKeys.has(preset.key));
+  const partnerPresets = filteredPresets.filter((preset) => !officialProviderKeys.has(preset.key));
+
+  const defaultProviderTab = officialPresets.length > 0 ? "official" : "partner";
+
+  const renderPresetCard = (preset: {
+    key: string;
+    label: string;
+    description: string;
+    docsUrl?: string;
+  }) => {
+    const status = applyStatus[preset.key] || "idle";
+    const isLoading = status === "loading";
+    const isSuccess = status === "success";
+    const testState = testStatus[preset.key] || "idle";
+    const isTestSuccess = testState === "success";
+    const isTestError = testState === "error";
+    const missingKeys = testMissingKeys[preset.key] || [];
+    const missingValues = testMissingValues[preset.key] || {};
+    const isActive = activeProvider === preset.key;
+
+    return (
+      <div
+        key={preset.key}
+        className={`rounded-lg border-2 p-3 flex flex-col gap-2 w-full overflow-hidden ${
+          isActive
+            ? "border-primary bg-primary/10"
+            : isTestSuccess
+              ? "border-primary/60 bg-primary/5"
+              : isTestError
+                ? "border-destructive/60 bg-destructive/5"
+                : "border-border bg-card-alt"
+        }`}
+      >
+        <div className="flex w-full flex-nowrap items-start gap-3 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
+              {isActive && (
+                <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary text-primary-foreground">
+                  Active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs text-muted-foreground truncate">{preset.description}</p>
+              {preset.docsUrl && (
+                <a
+                  href={preset.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-primary shrink-0"
+                  title="Documentation"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLinkIcon className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          </div>
+          <ResponsiveActions
+            variant="router"
+            className="shrink-0"
+            icon={
+              <>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9"
+                  onClick={() => handleTogglePresetPreview(preset.key)}
+                  title={expandedPresetKey === preset.key ? "Hide config" : "Show current config"}
+                >
+                  {expandedPresetKey === preset.key ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className={`h-9 w-9 ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`}
+                  onClick={() => handleTestPreset(preset.key)}
+                  title="Test"
+                >
+                  <FlaskConical className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  className="h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90"
+                  disabled={isLoading}
+                  onClick={() => handleApplyPreset(preset.key)}
+                  title={isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}
+                >
+                  <RocketIcon />
+                </Button>
+              </>
+            }
+            text={
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="max-w-[8.5rem]"
+                  onClick={() => handleTogglePresetPreview(preset.key)}
+                >
+                  <span className="block truncate">{expandedPresetKey === preset.key ? "Hide config" : "Show config"}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`max-w-[6rem] ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`}
+                  onClick={() => handleTestPreset(preset.key)}
+                >
+                  <span className="block truncate">Test</span>
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 max-w-[6.5rem]"
+                  disabled={isLoading}
+                  onClick={() => handleApplyPreset(preset.key)}
+                >
+                  <span className="block truncate">{isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}</span>
+                </Button>
+              </>
+            }
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+          {isSuccess && <span className="text-xs text-green-600">Saved</span>}
+          {status === "error" && <span className="text-xs text-red-600">Failed</span>}
+          {applyHint[preset.key] && (
+            <span className="inline-flex items-center gap-1">
+              <span className="text-xs text-amber-600">{applyHint[preset.key]}</span>
+              <button
+                className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink"
+                onClick={() => setApplyHint((prev) => ({ ...prev, [preset.key]: "" }))}
+                title="Dismiss"
+              >
+                <Cross2Icon className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {testStatus[preset.key] === "loading" && <span className="text-xs text-muted-foreground">Testing...</span>}
+          {(testStatus[preset.key] === "success" || testStatus[preset.key] === "error") && (
+            <span className="inline-flex items-center gap-1">
+              <span className={`text-xs ${testStatus[preset.key] === "success" ? "text-green-600" : "text-red-600"}`}>
+                {testMessage[preset.key] || (testStatus[preset.key] === "error" ? "Failed" : "")}
+              </span>
+              <button
+                className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink"
+                onClick={() => {
+                  setTestStatus((prev) => ({ ...prev, [preset.key]: "idle" }));
+                  setTestMessage((prev) => ({ ...prev, [preset.key]: "" }));
+                  setTestMissingKeys((prev) => ({ ...prev, [preset.key]: [] }));
+                }}
+                title="Clear test status"
+              >
+                <Cross2Icon className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+        </div>
+        {expandedPresetKey === preset.key && (
+          <div className="rounded-lg border border-border bg-canvas/70 p-2">
+            {(() => {
+              const preview = getPresetPreviewConfig(preset.key);
+              const envKeys = Object.keys(preview.env);
+              return (
+                <>
+                  {preview.note && <p className="text-xs text-muted-foreground mb-2">{preview.note}</p>}
+                  {envKeys.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {envKeys.map((key) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-mono min-w-[10rem] shrink-0">{key}</span>
+                          <input
+                            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1 font-mono"
+                            placeholder="Enter value..."
+                            value={rawEnv[key] || ""}
+                            onChange={async (e) => {
+                              await invoke("update_settings_env", { envKey: key, envValue: e.target.value });
+                              await refreshSettings();
+                            }}
+                          />
+                        </div>
+                      ))}
+                      {providerModels[preset.key] && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-mono min-w-[10rem] shrink-0">ANTHROPIC_MODEL</span>
+                          <select
+                            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1 font-mono"
+                            value={selectedModels[preset.key] || providerModels[preset.key][0]?.id}
+                            onChange={(e) => setSelectedModels((prev) => ({ ...prev, [preset.key]: e.target.value }))}
+                          >
+                            {providerModels[preset.key].map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No configuration required.</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+        {missingKeys.length > 0 && (
+          <div className="rounded-lg border border-dashed border-border bg-canvas/60 p-2">
+            <p className="text-xs text-muted-foreground mb-2">Fill missing env values to continue testing.</p>
+            <p className="text-xs text-muted-foreground mb-2">Press Tab to accept the placeholder.</p>
+            <div className="flex flex-col gap-2">
+              {missingKeys.map((key) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-mono min-w-[6rem]">{key}</span>
+                  <input
+                    className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1"
+                    placeholder={getMissingEnvPlaceholder(key)}
+                    value={missingValues[key] ?? ""}
+                    onChange={(e) => handleMissingValueChange(preset.key, key, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveMissingAndRetest(preset.key);
+                      if (e.key === "Tab" && !(missingValues[key] ?? "").trim()) {
+                        const placeholder = getMissingEnvPlaceholder(key);
+                        if (placeholder !== "value") {
+                          e.preventDefault();
+                          handleMissingValueChange(preset.key, key, placeholder);
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => handleSaveMissingAndRetest(preset.key)}>
+                Save & Retest
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -645,8 +888,7 @@ export function SettingsView({
               if (!template?.content) return;
               try {
                 await invoke("install_setting_template", { config: template.content });
-                const updated = await invoke<ClaudeSettings>("get_settings");
-                setSettings(updated);
+                refreshSettings();
               } catch (e) {
                 console.error(e);
               }
@@ -839,200 +1081,30 @@ export function SettingsView({
           title="LLM Provider"
           subtitle="Switch between Anthropic official or third-party providers"
           headerRight={applyError && <p className="text-xs text-red-600">{applyError}</p>}
-          bodyClassName="p-3 grid gap-3"
+          bodyClassName="p-3 space-y-3"
         >
-          {filteredPresets.map((preset) => {
-            const status = applyStatus[preset.key] || "idle";
-            const isLoading = status === "loading";
-            const isSuccess = status === "success";
-            const testState = testStatus[preset.key] || "idle";
-            const isTestSuccess = testState === "success";
-            const isTestError = testState === "error";
-            const missingKeys = testMissingKeys[preset.key] || [];
-            const missingValues = testMissingValues[preset.key] || {};
-            const isActive = activeProvider === preset.key;
-            return (
-              <div
-                key={preset.key}
-                className={`rounded-lg border-2 p-3 flex flex-col gap-2 w-full overflow-hidden ${
-                  isActive
-                    ? "border-primary bg-primary/10"
-                    : isTestSuccess
-                      ? "border-primary/60 bg-primary/5"
-                      : isTestError
-                        ? "border-destructive/60 bg-destructive/5"
-                        : "border-border bg-card-alt"
-                }`}
-              >
-                <div className="flex w-full flex-nowrap items-start gap-3 overflow-hidden">
-                  <div className="min-w-0 flex-1 overflow-hidden">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-ink truncate">{preset.label}</p>
-                      {isActive && (
-                        <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary text-primary-foreground">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-muted-foreground truncate">{preset.description}</p>
-                      {preset.docsUrl && (
-                        <a
-                          href={preset.docsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-primary shrink-0"
-                          title="Documentation"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLinkIcon className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                    {providerModels[preset.key] && (
-                      <select
-                        className="mt-2 text-xs px-2 py-1 rounded bg-canvas border border-border text-ink w-full max-w-[200px]"
-                        value={selectedModels[preset.key] || providerModels[preset.key][0]?.id}
-                        onChange={(e) => setSelectedModels((prev) => ({ ...prev, [preset.key]: e.target.value }))}
-                      >
-                        {providerModels[preset.key].map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <ResponsiveActions
-                    variant="router"
-                    className="shrink-0"
-                    icon={
-                      <>
-                        <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => handleTogglePresetPreview(preset.key)} title={expandedPresetKey === preset.key ? "Hide config" : "Show current config"}>
-                          {expandedPresetKey === preset.key ? <EyeClosedIcon /> : <EyeOpenIcon />}
-                        </Button>
-                        <Button size="icon" variant="outline" className={`h-9 w-9 ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`} onClick={() => handleTestPreset(preset.key)} title="Test">
-                          <FlaskConical className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" className="h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90" disabled={isLoading} onClick={() => handleApplyPreset(preset.key)} title={isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}>
-                          <RocketIcon />
-                        </Button>
-                      </>
-                    }
-                    text={
-                      <>
-                        <Button size="sm" variant="outline" className="max-w-[8.5rem]" onClick={() => handleTogglePresetPreview(preset.key)}>
-                          <span className="block truncate">{expandedPresetKey === preset.key ? "Hide config" : "Show config"}</span>
-                        </Button>
-                        <Button size="sm" variant="outline" className={`max-w-[6rem] ${isTestSuccess ? "border-primary text-primary" : isTestError ? "border-destructive text-destructive" : ""}`} onClick={() => handleTestPreset(preset.key)}>
-                          <span className="block truncate">Test</span>
-                        </Button>
-                        <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 max-w-[6.5rem]" disabled={isLoading} onClick={() => handleApplyPreset(preset.key)}>
-                          <span className="block truncate">{isLoading ? "Applying..." : isSuccess ? "Applied" : "Apply"}</span>
-                        </Button>
-                      </>
-                    }
-                  />
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 text-right">
-                  {isSuccess && <span className="text-xs text-green-600">Saved</span>}
-                  {status === "error" && <span className="text-xs text-red-600">Failed</span>}
-                  {applyHint[preset.key] && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="text-xs text-amber-600">{applyHint[preset.key]}</span>
-                      <button className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink" onClick={() => setApplyHint((prev) => ({ ...prev, [preset.key]: "" }))} title="Dismiss">
-                        <Cross2Icon className="w-3 h-3" />
-                      </button>
-                    </span>
-                  )}
-                  {testStatus[preset.key] === "loading" && <span className="text-xs text-muted-foreground">Testing...</span>}
-                  {(testStatus[preset.key] === "success" || testStatus[preset.key] === "error") && (
-                    <span className="inline-flex items-center gap-1">
-                      <span className={`text-xs ${testStatus[preset.key] === "success" ? "text-green-600" : "text-red-600"}`}>
-                        {testMessage[preset.key] || (testStatus[preset.key] === "error" ? "Failed" : "")}
-                      </span>
-                      <button
-                        className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-ink"
-                        onClick={() => {
-                          setTestStatus((prev) => ({ ...prev, [preset.key]: "idle" }));
-                          setTestMessage((prev) => ({ ...prev, [preset.key]: "" }));
-                          setTestMissingKeys((prev) => ({ ...prev, [preset.key]: [] }));
-                        }}
-                        title="Clear test status"
-                      >
-                        <Cross2Icon className="w-3 h-3" />
-                      </button>
-                    </span>
-                  )}
-                </div>
-                {expandedPresetKey === preset.key && (
-                  <div className="rounded-lg border border-border bg-canvas/70 p-2">
-                    {(() => {
-                      const preview = getPresetPreviewConfig(preset.key);
-                      const envKeys = Object.keys(preview.env);
-                      return (
-                        <>
-                          {preview.note && <p className="text-xs text-muted-foreground mb-2">{preview.note}</p>}
-                          {envKeys.length > 0 ? (
-                            <div className="flex flex-col gap-2">
-                              {envKeys.map((key) => (
-                                <div key={key} className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground font-mono min-w-[10rem] shrink-0">{key}</span>
-                                  <input
-                                    className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1 font-mono"
-                                    placeholder="Enter value..."
-                                    value={rawEnv[key] || ""}
-                                    onChange={async (e) => {
-                                      await invoke("update_settings_env", { envKey: key, envValue: e.target.value });
-                                      await refreshSettings();
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">No configuration required.</p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
-                {missingKeys.length > 0 && (
-                  <div className="rounded-lg border border-dashed border-border bg-canvas/60 p-2">
-                    <p className="text-xs text-muted-foreground mb-2">Fill missing env values to continue testing.</p>
-                    <p className="text-xs text-muted-foreground mb-2">Press Tab to accept the placeholder.</p>
-                    <div className="flex flex-col gap-2">
-                      {missingKeys.map((key) => (
-                        <div key={key} className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-mono min-w-[6rem]">{key}</span>
-                          <input
-                            className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink flex-1"
-                            placeholder={getMissingEnvPlaceholder(key)}
-                            value={missingValues[key] ?? ""}
-                            onChange={(e) => handleMissingValueChange(preset.key, key, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveMissingAndRetest(preset.key);
-                              if (e.key === "Tab" && !(missingValues[key] ?? "").trim()) {
-                                const placeholder = getMissingEnvPlaceholder(key);
-                                if (placeholder !== "value") {
-                                  e.preventDefault();
-                                  handleMissingValueChange(preset.key, key, placeholder);
-                                }
-                              }
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 flex justify-end">
-                      <Button size="sm" variant="outline" onClick={() => handleSaveMissingAndRetest(preset.key)}>
-                        Save & Retest
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <Tabs defaultValue={defaultProviderTab}>
+            <TabsList>
+              <TabsTrigger value="official">Anthropic Official</TabsTrigger>
+              <TabsTrigger value="partner">Third‑Party Partners</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="official" className="mt-2 grid gap-3">
+              {officialPresets.length > 0 ? (
+                officialPresets.map((preset) => renderPresetCard(preset))
+              ) : (
+                <p className="text-xs text-muted-foreground">No official providers match the current search.</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="partner" className="mt-2 grid gap-3">
+              {partnerPresets.length > 0 ? (
+                partnerPresets.map((preset) => renderPresetCard(preset))
+              ) : (
+                <p className="text-xs text-muted-foreground">No partner providers match the current search.</p>
+              )}
+            </TabsContent>
+          </Tabs>
         </CollapsibleCard>
       )}
 
