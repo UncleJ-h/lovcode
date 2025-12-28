@@ -104,33 +104,8 @@ export function getOrCreateTerminal(sessionId: string): PooledTerminal {
   // Open terminal in the detached container
   term.open(container);
 
-  // macOS: Cmd/Option + Arrow keys for navigation
-  term.attachCustomKeyEventHandler((event) => {
-    if (event.type !== "keydown") return true;
-    // Cmd+Left/Right: line start/end
-    if (event.metaKey && !event.altKey) {
-      if (event.key === "ArrowLeft") {
-        term.input("\x01"); // Ctrl+A
-        return false;
-      }
-      if (event.key === "ArrowRight") {
-        term.input("\x05"); // Ctrl+E
-        return false;
-      }
-    }
-    // Option+Left/Right: word jump
-    if (event.altKey && !event.metaKey) {
-      if (event.key === "ArrowLeft") {
-        term.input("\x1bb"); // Alt+b (backward-word)
-        return false;
-      }
-      if (event.key === "ArrowRight") {
-        term.input("\x1bf"); // Alt+f (forward-word)
-        return false;
-      }
-    }
-    return true;
-  });
+  // Note: macOS keyboard shortcuts (Cmd+Arrow, Cmd+Backspace, Option+Arrow, Option+Backspace)
+  // are handled in TerminalPane.tsx using invoke("pty_write") for direct PTY communication
 
   const pooled: PooledTerminal = { term, fitAddon, container };
   terminalPool.set(sessionId, pooled);

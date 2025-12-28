@@ -190,16 +190,59 @@ export function TerminalPane({
       }
     };
 
-    // Shift+Enter: bracketed paste with U+2028 (Line Separator)
-    // Note: leaves invisible char requiring one extra backspace - best working solution found
+    // macOS keyboard shortcuts - directly write to PTY for better compatibility
     term.attachCustomKeyEventHandler((event) => {
-      if (event.type === 'keydown' && event.key === 'Enter' && event.shiftKey) {
-        if (ptyReadySessions.has(sessionId)) {
-          // ESC[200~ + U+2028 + ESC[201~
-          invoke("pty_write", { id: sessionId, data: [0x1b, 0x5b, 0x32, 0x30, 0x30, 0x7e, 0xe2, 0x80, 0xa8, 0x1b, 0x5b, 0x32, 0x30, 0x31, 0x7e] });
-        }
+      if (event.type !== 'keydown') return true;
+      if (!ptyReadySessions.has(sessionId)) return true;
+
+      // Shift+Enter: bracketed paste with U+2028 (Line Separator)
+      if (event.key === 'Enter' && event.shiftKey) {
+        invoke("pty_write", { id: sessionId, data: [0x1b, 0x5b, 0x32, 0x30, 0x30, 0x7e, 0xe2, 0x80, 0xa8, 0x1b, 0x5b, 0x32, 0x30, 0x31, 0x7e] });
         return false;
       }
+
+      // Cmd+Left: Home (line start) - try multiple sequences
+      if (event.key === 'ArrowLeft' && event.metaKey && !event.altKey) {
+        // Send Ctrl+A (0x01) - emacs style line start
+        invoke("pty_write", { id: sessionId, data: [0x01] });
+        return false;
+      }
+
+      // Cmd+Right: End (line end)
+      if (event.key === 'ArrowRight' && event.metaKey && !event.altKey) {
+        // Send Ctrl+E (0x05) - emacs style line end
+        invoke("pty_write", { id: sessionId, data: [0x05] });
+        return false;
+      }
+
+      // Cmd+Backspace: Delete to line start
+      if (event.key === 'Backspace' && event.metaKey && !event.altKey) {
+        // Send Ctrl+U (0x15) - kill line backward
+        invoke("pty_write", { id: sessionId, data: [0x15] });
+        return false;
+      }
+
+      // Option+Left: Word backward
+      if (event.key === 'ArrowLeft' && event.altKey && !event.metaKey) {
+        // Send ESC b (Alt+b) - backward word
+        invoke("pty_write", { id: sessionId, data: [0x1b, 0x62] });
+        return false;
+      }
+
+      // Option+Right: Word forward
+      if (event.key === 'ArrowRight' && event.altKey && !event.metaKey) {
+        // Send ESC f (Alt+f) - forward word
+        invoke("pty_write", { id: sessionId, data: [0x1b, 0x66] });
+        return false;
+      }
+
+      // Option+Backspace: Delete word backward
+      if (event.key === 'Backspace' && event.altKey && !event.metaKey) {
+        // Send Ctrl+W (0x17) - kill word backward
+        invoke("pty_write", { id: sessionId, data: [0x17] });
+        return false;
+      }
+
       return true;
     });
 
@@ -242,6 +285,7 @@ export function TerminalPane({
     // Listen for PTY data events
     // Use streaming decoder to handle multi-byte UTF-8 chars split across events
     const decoder = new TextDecoder("utf-8", { fatal: false });
+
     const unlistenData = listen<PtyDataEvent>("pty-data", (event) => {
       if (event.payload.id === sessionId && mountState.isMounted) {
         const bytes = new Uint8Array(event.payload.data);
