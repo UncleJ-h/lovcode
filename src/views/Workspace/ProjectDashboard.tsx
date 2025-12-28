@@ -27,23 +27,30 @@ interface ProjectDashboardProps {
   onUnarchiveFeature: (featureId: string) => void;
 }
 
-function StatCard({
-  icon,
-  label,
-  count,
-  color,
+function BentoCard({
+  title,
+  children,
+  className = "",
+  action,
+  subtitle,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  color: string;
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  action?: React.ReactNode;
+  subtitle?: React.ReactNode;
 }) {
   return (
-    <div className={`flex items-center gap-3 p-4 bg-card border border-border rounded-xl ${color}`}>
-      <div className="p-2 bg-muted rounded-lg">{icon}</div>
-      <div>
-        <div className="text-2xl font-bold text-ink">{count}</div>
-        <div className="text-xs text-muted-foreground">{label}</div>
+    <div className={`bg-card border border-border rounded-2xl overflow-hidden flex flex-col ${className}`}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</h3>
+          {subtitle}
+        </div>
+        {action}
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {children}
       </div>
     </div>
   );
@@ -81,9 +88,9 @@ export function ProjectDashboard({
   const activeFeatures = project.features.filter((f) => !f.archived);
 
   return (
-    <div className="flex-1 h-full flex flex-col overflow-hidden">
+    <div className="flex-1 h-full flex flex-col overflow-hidden bg-muted/30">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-border bg-card">
+      <div className="flex-shrink-0 px-6 py-4 bg-card border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ProjectLogo projectPath={project.path} size="lg" />
@@ -99,7 +106,7 @@ export function ProjectDashboard({
           <div className="flex items-center gap-2">
             {archivedFeatures.length > 0 && (
               <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors">
+                <DropdownMenuTrigger className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-muted rounded-lg transition-colors">
                   <ArchiveIcon className="w-4 h-4" />
                   <span>Archived ({archivedFeatures.length})</span>
                 </DropdownMenuTrigger>
@@ -119,89 +126,108 @@ export function ProjectDashboard({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <button
-              onClick={onAddFeature}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          </div>
+        </div>
+      </div>
+
+      {/* Bento Grid */}
+      <div className="flex-1 min-h-0 p-4 overflow-y-auto">
+        <div className="grid grid-cols-12 gap-4 h-full" style={{ minHeight: '600px' }}>
+          {/* Recent Features - spans full width */}
+          {recentFeatures.length > 0 && (
+            <div className="col-span-12 bg-card border border-border rounded-2xl px-4 py-3">
+              <h3 className="text-xs font-medium text-muted-foreground mb-2">Recent Features</h3>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {recentFeatures.map((feature) => (
+                  <button
+                    key={feature.id}
+                    onClick={() => onFeatureClick(feature.id)}
+                    className="flex-shrink-0 px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                  >
+                    {feature.seq > 0 && <span className="text-muted-foreground">#{feature.seq} </span>}
+                    {feature.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Main content area - Kanban on left, sidebar on right */}
+          <div className="col-span-8 row-span-2">
+            <BentoCard
+              title="Features"
+              className="h-full"
+              subtitle={
+                <div className="flex items-center gap-2 text-[10px]">
+                  {stats.pending > 0 && (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <TimerIcon className="w-3 h-3" />{stats.pending}
+                    </span>
+                  )}
+                  {stats.running > 0 && (
+                    <span className="flex items-center gap-1 text-blue-500">
+                      <UpdateIcon className="w-3 h-3" />{stats.running}
+                    </span>
+                  )}
+                  {stats.needsReview > 0 && (
+                    <span className="flex items-center gap-1 text-amber-500">
+                      <ExclamationTriangleIcon className="w-3 h-3" />{stats.needsReview}
+                    </span>
+                  )}
+                  {stats.completed > 0 && (
+                    <span className="flex items-center gap-1 text-green-500">
+                      <CheckCircledIcon className="w-3 h-3" />{stats.completed}
+                    </span>
+                  )}
+                </div>
+              }
+              action={
+                <button
+                  onClick={onAddFeature}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <PlusIcon className="w-3.5 h-3.5" />
+                  New Feature
+                </button>
+              }
             >
-              <PlusIcon className="w-4 h-4" />
-              New Feature
-            </button>
+              {activeFeatures.length > 0 ? (
+                <KanbanBoard
+                  features={activeFeatures}
+                  onFeatureClick={onFeatureClick}
+                  onFeatureStatusChange={onFeatureStatusChange}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-muted-foreground text-sm">No features yet</p>
+                </div>
+              )}
+            </BentoCard>
+          </div>
+
+          {/* Diagnostics - right side top */}
+          <div className="col-span-4">
+            <BentoCard title="Diagnostics" className="h-full max-h-[300px]">
+              <div className="overflow-y-auto h-full">
+                <ProjectDiagnostics projectPath={project.path} embedded />
+              </div>
+            </BentoCard>
+          </div>
+
+          {/* Git History - right side bottom */}
+          <div className="col-span-4">
+            <BentoCard title="Git History" className="h-full max-h-[250px]">
+              <div className="overflow-y-auto h-full">
+                <GitHistory
+                  projectPath={project.path}
+                  features={activeFeatures}
+                  embedded
+                />
+              </div>
+            </BentoCard>
           </div>
         </div>
       </div>
-
-      {/* Stats */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-border">
-        <div className="grid grid-cols-4 gap-4">
-          <StatCard
-            icon={<TimerIcon className="w-5 h-5 text-muted-foreground" />}
-            label="Pending"
-            count={stats.pending}
-            color=""
-          />
-          <StatCard
-            icon={<UpdateIcon className="w-5 h-5 text-blue-500" />}
-            label="Running"
-            count={stats.running}
-            color=""
-          />
-          <StatCard
-            icon={<ExclamationTriangleIcon className="w-5 h-5 text-amber-500" />}
-            label="Needs Review"
-            count={stats.needsReview}
-            color=""
-          />
-          <StatCard
-            icon={<CheckCircledIcon className="w-5 h-5 text-green-500" />}
-            label="Completed"
-            count={stats.completed}
-            color=""
-          />
-        </div>
-      </div>
-
-      {/* Diagnostics */}
-      <ProjectDiagnostics projectPath={project.path} />
-
-      {/* Recent Activity */}
-      {recentFeatures.length > 0 && (
-        <div className="flex-shrink-0 px-6 py-3 border-b border-border">
-          <h3 className="text-xs font-medium text-muted-foreground mb-2">Recent Features</h3>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {recentFeatures.map((feature) => (
-              <button
-                key={feature.id}
-                onClick={() => onFeatureClick(feature.id)}
-                className="flex-shrink-0 px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-              >
-                {feature.seq > 0 && <span className="text-muted-foreground">#{feature.seq} </span>}
-                {feature.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Kanban Board */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeFeatures.length > 0 ? (
-          <KanbanBoard
-            features={activeFeatures}
-            onFeatureClick={onFeatureClick}
-            onFeatureStatusChange={onFeatureStatusChange}
-          />
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-muted-foreground">No features yet</p>
-          </div>
-        )}
-      </div>
-
-      {/* Git History */}
-      <GitHistory
-        projectPath={project.path}
-        features={activeFeatures}
-      />
     </div>
   );
 }
