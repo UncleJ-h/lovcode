@@ -118,6 +118,13 @@ fn get_index_dir() -> PathBuf {
         .join("search-index")
 }
 
+fn get_command_stats_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovcode")
+        .join("command-stats.json")
+}
+
 const JIEBA_TOKENIZER_NAME: &str = "jieba";
 
 fn create_schema() -> Schema {
@@ -889,6 +896,61 @@ async fn build_search_index() -> Result<usize, String> {
         let projects_dir = get_claude_dir().join("projects");
         let mut indexed_count = 0;
 
+        // === Command stats collection ===
+        let mut command_stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
+        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>")
+            .map_err(|e| e.to_string())?;
+
+        // Build alias -> canonical name mapping
+        let mut alias_map: HashMap<String, String> = HashMap::new();
+        let commands_dir = get_claude_dir().join("commands");
+
+        fn scan_commands_for_aliases(dir: &std::path::Path, alias_map: &mut HashMap<String, String>, base_dir: &std::path::Path) {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        scan_commands_for_aliases(&path, alias_map, base_dir);
+                    } else if path.extension().map_or(false, |e| e == "md") {
+                        let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
+                        let canonical = rel_path
+                            .with_extension("")
+                            .to_string_lossy()
+                            .replace('/', ":")
+                            .replace('\\', ":");
+
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            if content.starts_with("---") {
+                                if let Some(end) = content[3..].find("---") {
+                                    let fm = &content[3..3 + end];
+                                    for line in fm.lines() {
+                                        if line.starts_with("aliases:") {
+                                            let aliases_str = line.trim_start_matches("aliases:").trim();
+                                            for alias in aliases_str.split(',') {
+                                                let alias = alias.trim()
+                                                    .trim_matches('"')
+                                                    .trim_matches('\'')
+                                                    .trim_start_matches('/')
+                                                    .to_string();
+                                                if !alias.is_empty() {
+                                                    alias_map.insert(alias, canonical.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if commands_dir.exists() {
+            scan_commands_for_aliases(&commands_dir, &mut alias_map, &commands_dir);
+        }
+        // === End command stats setup ===
+
         if !projects_dir.exists() {
             return Ok(0);
         }
@@ -925,7 +987,7 @@ async fn build_search_index() -> Result<usize, String> {
                         }
                     }
 
-                    // Second pass: index messages
+                    // Second pass: index messages + collect command stats
                     for line in file_content.lines() {
                         if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
                             let line_type = parsed.line_type.as_deref();
@@ -952,6 +1014,27 @@ async fn build_search_index() -> Result<usize, String> {
                                     }
                                 }
                             }
+
+                            // Collect command stats from any line containing <command-name>
+                            if line.contains("<command-name>") {
+                                if let Some(ts_str) = &parsed.timestamp {
+                                    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                                        let week_key = ts.format("%Y-W%V").to_string();
+                                        for cap in command_pattern.captures_iter(line) {
+                                            if let Some(cmd_match) = cap.get(1) {
+                                                let raw_name = cmd_match.as_str().trim_start_matches('/').to_string();
+                                                let name = alias_map.get(&raw_name).cloned().unwrap_or(raw_name);
+                                                command_stats
+                                                    .entry(name)
+                                                    .or_default()
+                                                    .entry(week_key.clone())
+                                                    .and_modify(|c| *c += 1)
+                                                    .or_insert(1);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -960,9 +1043,20 @@ async fn build_search_index() -> Result<usize, String> {
 
         index_writer.commit().map_err(|e| e.to_string())?;
 
-        // Store index in global state
+        // Store search index in global state
         let mut guard = SEARCH_INDEX.lock().map_err(|e| e.to_string())?;
         *guard = Some(SearchIndex { index, schema });
+
+        // Write command stats to file
+        let stats_path = get_command_stats_path();
+        if let Some(parent) = stats_path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        let stats_json = serde_json::json!({
+            "updated_at": chrono::Utc::now().timestamp(),
+            "commands": command_stats,
+        });
+        fs::write(&stats_path, serde_json::to_string_pretty(&stats_json).unwrap_or_default()).ok();
 
         Ok(indexed_count)
     })
@@ -3711,109 +3805,40 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
     Ok(new_stats)
 }
 
-/// Returns command usage counts grouped by week
+/// Returns command usage counts grouped by week (from pre-built index)
 /// Format: { "command_name": { "2024-W01": count, "2024-W02": count, ... } }
 #[tauri::command]
-async fn get_command_weekly_stats(weeks: Option<usize>) -> Result<HashMap<String, HashMap<String, usize>>, String> {
-    let weeks = weeks.unwrap_or(12);
+fn get_command_weekly_stats(_weeks: Option<usize>) -> Result<HashMap<String, HashMap<String, usize>>, String> {
+    // Read from pre-built index (created by build_search_index)
+    let stats_path = get_command_stats_path();
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let projects_dir = get_claude_dir().join("projects");
-        // command_name -> (week_key -> count)
-        let mut stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    if !stats_path.exists() {
+        return Ok(HashMap::new());
+    }
 
-        if !projects_dir.exists() {
-            return Ok(stats);
-        }
+    let content = fs::read_to_string(&stats_path).map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>")
-            .map_err(|e| e.to_string())?;
+    // Extract commands map
+    let commands = parsed
+        .get("commands")
+        .and_then(|v| v.as_object())
+        .ok_or("Invalid command stats format")?;
 
-        // Calculate cutoff date (N weeks ago)
-        let now = chrono::Utc::now();
-        let cutoff = now - chrono::Duration::weeks(weeks as i64);
-
-        for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
-            let project_entry = project_entry.map_err(|e| e.to_string())?;
-            let project_path = project_entry.path();
-
-            if !project_path.is_dir() {
-                continue;
-            }
-
-            for session_entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
-                let session_entry = session_entry.map_err(|e| e.to_string())?;
-                let session_path = session_entry.path();
-                let name = session_path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
-
-                if !name.ends_with(".jsonl") || name.starts_with("agent-") {
-                    continue;
-                }
-
-                if let Ok(content) = fs::read_to_string(&session_path) {
-                    for line in content.lines() {
-                        // Check if line contains a command
-                        if !line.contains("<command-name>") {
-                            continue;
-                        }
-
-                        // Parse timestamp from the line
-                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
-                            let timestamp = parsed.get("timestamp")
-                                .and_then(|v| v.as_str())
-                                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                                .map(|dt| dt.with_timezone(&chrono::Utc));
-
-                            if let Some(ts) = timestamp {
-                                // Skip if before cutoff
-                                if ts < cutoff {
-                                    continue;
-                                }
-
-                                // Get week key (ISO week)
-                                let week_key = ts.format("%Y-W%V").to_string();
-
-                                // Extract command names from content
-                                let content_str = parsed.get("message")
-                                    .and_then(|m| m.get("content"))
-                                    .and_then(|c| {
-                                        if c.is_string() {
-                                            Some(c.as_str().unwrap().to_string())
-                                        } else if c.is_array() {
-                                            // Handle array content (tool results etc)
-                                            Some(serde_json::to_string(c).unwrap_or_default())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or_default();
-
-                                for cap in command_pattern.captures_iter(&content_str) {
-                                    if let Some(cmd_name) = cap.get(1) {
-                                        let name = cmd_name.as_str().trim_start_matches('/').to_string();
-                                        stats
-                                            .entry(name)
-                                            .or_default()
-                                            .entry(week_key.clone())
-                                            .and_modify(|c| *c += 1)
-                                            .or_insert(1);
-                                    }
-                                }
-                            }
-                        }
-                    }
+    let mut stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    for (cmd_name, week_data) in commands {
+        if let Some(weeks) = week_data.as_object() {
+            let mut week_map: HashMap<String, usize> = HashMap::new();
+            for (week_key, count) in weeks {
+                if let Some(n) = count.as_u64() {
+                    week_map.insert(week_key.clone(), n as usize);
                 }
             }
+            stats.insert(cmd_name.clone(), week_map);
         }
+    }
 
-        Ok(stats)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    Ok(stats)
 }
 
 // ============================================================================
