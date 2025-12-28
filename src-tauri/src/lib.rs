@@ -4487,13 +4487,13 @@ async fn install_claude_code_version(version: String, install_type: Option<Strin
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let cmd = if install_type_str == "npm" {
-            // NPM installation
+            // NPM installation (--force to overwrite existing native install)
             let package = if version == "latest" {
                 "@anthropic-ai/claude-code@latest".to_string()
             } else {
                 format!("@anthropic-ai/claude-code@{}", version)
             };
-            format!("npm install -g {}", package)
+            format!("npm install -g --force {}", package)
         } else {
             // Native installation (default)
             let version_arg = if version == "latest" { "".to_string() } else { version };
