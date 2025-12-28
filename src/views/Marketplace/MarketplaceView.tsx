@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CubeIcon, StarFilledIcon, HeartFilledIcon } from "@radix-ui/react-icons";
+import { CubeIcon } from "@radix-ui/react-icons";
 import type { TemplatesCatalog, TemplateComponent, TemplateCategory } from "../../types";
 import { SOURCE_FILTERS, TEMPLATE_CATEGORIES, type SourceFilterId } from "../../constants";
 import { LoadingState, EmptyState, SearchInput, PageHeader, ConfigPage } from "../../components/config";
@@ -119,15 +119,18 @@ export function MarketplaceView({ initialCategory, onSelectTemplate }: Marketpla
               <div className="flex items-center gap-2 min-w-0">
                 <p className="font-medium text-ink truncate">{template.name}</p>
                 {/* Source badge */}
-                {template.source_id && template.source_id !== "community" && (
-                  <span className="text-xs px-1.5 py-0.5 rounded shrink-0 flex items-center gap-1 bg-primary/10 text-primary">
-                    {template.source_id === "anthropic" ? (
-                      <StarFilledIcon className="w-3 h-3" />
-                    ) : (
-                      <HeartFilledIcon className="w-3 h-3" />
-                    )}
-                  </span>
-                )}
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
+                    template.source_id === "anthropic"
+                      ? "bg-amber-500/10 text-amber-600"
+                      : template.source_id === "lovstudio"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                  title={SOURCE_FILTERS.find((s) => s.id === template.source_id)?.tooltip}
+                >
+                  {SOURCE_FILTERS.find((s) => s.id === template.source_id)?.label || template.source_id}
+                </span>
               </div>
               {template.downloads != null && (
                 <span className="text-xs text-muted-foreground shrink-0">
