@@ -1,6 +1,6 @@
-import { useMemo, useRef, useEffect, useState } from "react";
-
-type ViewMode = "weekday" | "hour";
+import { useMemo, useRef, useEffect } from "react";
+import { useAtom } from "jotai";
+import { activityViewModeAtom } from "@/store";
 
 interface ActivityHeatmapProps {
   /** Map of date (YYYY-MM-DD) to count */
@@ -10,7 +10,7 @@ interface ActivityHeatmapProps {
 }
 
 export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
-  const [mode, setMode] = useState<ViewMode>("weekday");
+  const [mode, setMode] = useAtom(activityViewModeAtom);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const dailyMap = useMemo(() => new Map(Object.entries(daily)), [daily]);

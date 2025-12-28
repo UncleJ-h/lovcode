@@ -37,3 +37,6 @@ export {
 
 // Component atoms
 export { collapsibleStatesAtom, docReaderCollapsedGroupsAtom } from "./atoms/components";
+
+// Home atoms
+export { activityViewModeAtom, commandRangeAtom, commandModeAtom } from "./atoms/home";
