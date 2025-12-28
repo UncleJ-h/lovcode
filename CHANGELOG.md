@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0
+
+### Minor Changes
+
+- 内嵌 claude-code 和 codex 文档作为 submodules
+
+  - 添加 claude-code-docs 和 codex 作为 git submodules
+  - 编译后的应用自动包含这两个文档库
+  - 用户自定义文档优先于内嵌文档
+  - 更新 README 中的 GitHub 仓库地址
+
 ## 0.16.0
 
 ### Minor Changes
