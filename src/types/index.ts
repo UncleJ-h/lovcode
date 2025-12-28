@@ -126,7 +126,9 @@ export interface DistillDocument {
 export interface McpServer {
   name: string;
   description: string | null;
-  command: string;
+  type: string | null;        // "http" | "sse" | "stdio"
+  url: string | null;         // for http/sse servers
+  command: string | null;     // for stdio servers
   args: string[];
   env: Record<string, string>;
 }

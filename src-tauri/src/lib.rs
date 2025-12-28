@@ -249,7 +249,10 @@ pub struct LocalCommand {
 pub struct McpServer {
     pub name: String,
     pub description: Option<String>,
-    pub command: String,
+    #[serde(rename = "type")]
+    pub server_type: Option<String>, // "http" | "sse" | "stdio"
+    pub url: Option<String>,         // for http/sse servers
+    pub command: Option<String>,     // for stdio servers
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
 }
@@ -3023,20 +3026,41 @@ fn install_mcp_template(name: String, config: String) -> Result<String, String> 
     // Parse the MCP config
     let mcp_config: serde_json::Value = serde_json::from_str(&config).map_err(|e| e.to_string())?;
 
-    // Extract the actual server config from the template
-    // Templates may come as {"mcpServers": {"name": {...}}} or just {...}
-    let server_config =
-        if let Some(mcp_servers) = mcp_config.get("mcpServers").and_then(|v| v.as_object()) {
-            // Template has mcpServers wrapper - extract the first server's config
-            mcp_servers
-                .values()
-                .next()
-                .cloned()
-                .unwrap_or(mcp_config.clone())
-        } else {
-            // Template is already the bare config
-            mcp_config
-        };
+    // Helper to check if a value looks like an actual MCP server config
+    // (has type, url, or command field)
+    fn is_server_config(v: &serde_json::Value) -> bool {
+        v.get("type").is_some() || v.get("url").is_some() || v.get("command").is_some()
+    }
+
+    // Recursively extract the actual server config, unwrapping any nesting
+    fn extract_server_config(v: serde_json::Value) -> serde_json::Value {
+        // If it's already a valid config, return it
+        if is_server_config(&v) {
+            return v;
+        }
+
+        // Try to unwrap {"mcpServers": {...}}
+        if let Some(mcp_servers) = v.get("mcpServers").and_then(|x| x.as_object()) {
+            if let Some(inner) = mcp_servers.values().next() {
+                return extract_server_config(inner.clone());
+            }
+        }
+
+        // Try to unwrap {"someName": {config}}
+        if let Some(obj) = v.as_object() {
+            if obj.len() == 1 {
+                if let Some(inner) = obj.values().next() {
+                    if is_server_config(inner) || inner.is_object() {
+                        return extract_server_config(inner.clone());
+                    }
+                }
+            }
+        }
+
+        v
+    }
+
+    let server_config = extract_server_config(mcp_config);
 
     // Read existing ~/.claude.json or create new
     let mut claude_json: serde_json::Value = if claude_json_path.exists() {
@@ -3049,6 +3073,25 @@ fn install_mcp_template(name: String, config: String) -> Result<String, String> 
     // Ensure mcpServers exists
     if !claude_json.get("mcpServers").is_some() {
         claude_json["mcpServers"] = serde_json::json!({});
+    }
+
+    // Ensure the server config has a 'type' field (required by Claude Code)
+    // Infer type from the config if not present:
+    // - If has "url" field -> "http" (or "sse" if url contains /sse)
+    // - If has "command" field -> "stdio"
+    let mut server_config = server_config;
+    if server_config.get("type").is_none() {
+        if let Some(url) = server_config.get("url").and_then(|v| v.as_str()) {
+            // Check if it's an SSE endpoint
+            let transport_type = if url.ends_with("/sse") || url.contains("/sse/") {
+                "sse"
+            } else {
+                "http"
+            };
+            server_config["type"] = serde_json::json!(transport_type);
+        } else if server_config.get("command").is_some() {
+            server_config["type"] = serde_json::json!("stdio");
+        }
     }
 
     // Add the MCP server with the extracted config
@@ -3668,6 +3711,111 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
     Ok(new_stats)
 }
 
+/// Returns command usage counts grouped by week
+/// Format: { "command_name": { "2024-W01": count, "2024-W02": count, ... } }
+#[tauri::command]
+async fn get_command_weekly_stats(weeks: Option<usize>) -> Result<HashMap<String, HashMap<String, usize>>, String> {
+    let weeks = weeks.unwrap_or(12);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let projects_dir = get_claude_dir().join("projects");
+        // command_name -> (week_key -> count)
+        let mut stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
+
+        if !projects_dir.exists() {
+            return Ok(stats);
+        }
+
+        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>")
+            .map_err(|e| e.to_string())?;
+
+        // Calculate cutoff date (N weeks ago)
+        let now = chrono::Utc::now();
+        let cutoff = now - chrono::Duration::weeks(weeks as i64);
+
+        for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+            let project_entry = project_entry.map_err(|e| e.to_string())?;
+            let project_path = project_entry.path();
+
+            if !project_path.is_dir() {
+                continue;
+            }
+
+            for session_entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
+                let session_entry = session_entry.map_err(|e| e.to_string())?;
+                let session_path = session_entry.path();
+                let name = session_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+
+                if !name.ends_with(".jsonl") || name.starts_with("agent-") {
+                    continue;
+                }
+
+                if let Ok(content) = fs::read_to_string(&session_path) {
+                    for line in content.lines() {
+                        // Check if line contains a command
+                        if !line.contains("<command-name>") {
+                            continue;
+                        }
+
+                        // Parse timestamp from the line
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                            let timestamp = parsed.get("timestamp")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                                .map(|dt| dt.with_timezone(&chrono::Utc));
+
+                            if let Some(ts) = timestamp {
+                                // Skip if before cutoff
+                                if ts < cutoff {
+                                    continue;
+                                }
+
+                                // Get week key (ISO week)
+                                let week_key = ts.format("%Y-W%V").to_string();
+
+                                // Extract command names from content
+                                let content_str = parsed.get("message")
+                                    .and_then(|m| m.get("content"))
+                                    .and_then(|c| {
+                                        if c.is_string() {
+                                            Some(c.as_str().unwrap().to_string())
+                                        } else if c.is_array() {
+                                            // Handle array content (tool results etc)
+                                            Some(serde_json::to_string(c).unwrap_or_default())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap_or_default();
+
+                                for cap in command_pattern.captures_iter(&content_str) {
+                                    if let Some(cmd_name) = cap.get(1) {
+                                        let name = cmd_name.as_str().trim_start_matches('/').to_string();
+                                        stats
+                                            .entry(name)
+                                            .or_default()
+                                            .entry(week_key.clone())
+                                            .and_modify(|c| *c += 1)
+                                            .or_insert(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(stats)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ============================================================================
 // Settings Feature
 // ============================================================================
@@ -3728,11 +3876,18 @@ fn get_settings() -> Result<ClaudeSettings, String> {
                                     .get("description")
                                     .and_then(|v| v.as_str())
                                     .map(String::from);
+                                let server_type = cfg
+                                    .get("type")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let url = cfg
+                                    .get("url")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
                                 let command = cfg
                                     .get("command")
                                     .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
+                                    .map(String::from);
                                 let args: Vec<String> = cfg
                                     .get("args")
                                     .and_then(|v| v.as_array())
@@ -3757,6 +3912,8 @@ fn get_settings() -> Result<ClaudeSettings, String> {
                                 mcp_servers.push(McpServer {
                                     name: name.clone(),
                                     description,
+                                    server_type,
+                                    url,
                                     command,
                                     args,
                                     env,
@@ -5441,6 +5598,7 @@ pub fn run() {
             get_project_context,
             get_settings,
             get_command_stats,
+            get_command_weekly_stats,
             get_activity_stats,
             get_templates_catalog,
             install_command_template,
