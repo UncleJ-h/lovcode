@@ -25,7 +25,7 @@ export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch 
   const { data: commandWeeklyStats } = useInvokeQuery<Record<string, Record<string, number>>>(
     ["commandWeeklyStats"],
     "get_command_weekly_stats",
-    { weeks: 12 }
+    { weeks: 0 }  // 0 = all time, filtering done in CommandTrendChart
   );
 
   const data = projects && sessions && commands ? { projects, sessions, commands } : null;
@@ -85,7 +85,7 @@ export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch 
             {/* Command Trend Chart */}
             {commandWeeklyStats && Object.keys(commandWeeklyStats).length > 0 && (
               <div className="mt-4 pt-4 border-t border-border/40">
-                <CommandTrendChart data={commandWeeklyStats} weeks={12} />
+                <CommandTrendChart data={commandWeeklyStats} weeks={13} />
               </div>
             )}
             {/* Inline Stats */}

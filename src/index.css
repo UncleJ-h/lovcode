@@ -311,3 +311,14 @@ article.prose [align="left"] {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+/* Recharts tooltip fix */
+.recharts-tooltip-wrapper {
+  z-index: 1000 !important;
+  pointer-events: none !important;
+}
+
+.recharts-tooltip-wrapper > div {
+  background: #FFFFFF !important;
+  opacity: 1 !important;
+}
