@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.2
+
+### Patch Changes
+
+- fix(stats): 修复命令统计数据膨胀问题
+
+  - weekly 模式下隐藏当前（不完整）周的数据
+  - 过滤 queue-operation 类型的内部日志，避免重复计数
+  - 简化 CommandTrendChart 代码，移除不再需要的 \_current 逻辑
+
 ## 0.18.1
 
 ### Patch Changes
