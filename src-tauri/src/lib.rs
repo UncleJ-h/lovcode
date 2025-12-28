@@ -1016,7 +1016,8 @@ async fn build_search_index() -> Result<usize, String> {
                             }
 
                             // Collect command stats from any line containing <command-name>
-                            if line.contains("<command-name>") {
+                            // Skip queue-operation entries (internal logs, not actual command invocations)
+                            if line.contains("<command-name>") && !line.contains("\"type\":\"queue-operation\"") {
                                 if let Some(ts_str) = &parsed.timestamp {
                                     if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(ts_str) {
                                         let week_key = ts.format("%Y-W%V").to_string();
@@ -3775,12 +3776,18 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
                     if file.seek(SeekFrom::Start(prev_size)).is_ok() {
                         let mut new_content = String::new();
                         if file.read_to_string(&mut new_content).is_ok() {
-                            for cap in command_pattern.captures_iter(&new_content) {
-                                if let Some(cmd_name) = cap.get(1) {
-                                    // Remove leading "/" to match cmd.name format
-                                    let name =
-                                        cmd_name.as_str().trim_start_matches('/').to_string();
-                                    *stats.entry(name).or_insert(0) += 1;
+                            // Process line by line to filter out queue-operation entries
+                            for line in new_content.lines() {
+                                if line.contains("\"type\":\"queue-operation\"") {
+                                    continue;
+                                }
+                                for cap in command_pattern.captures_iter(line) {
+                                    if let Some(cmd_name) = cap.get(1) {
+                                        // Remove leading "/" to match cmd.name format
+                                        let name =
+                                            cmd_name.as_str().trim_start_matches('/').to_string();
+                                        *stats.entry(name).or_insert(0) += 1;
+                                    }
                                 }
                             }
                         }
