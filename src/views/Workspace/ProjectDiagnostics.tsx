@@ -6,7 +6,6 @@ import {
   CrossCircledIcon,
   ExclamationTriangleIcon,
   ChevronDownIcon,
-  GearIcon,
   LockClosedIcon,
   CodeIcon,
 } from "@radix-ui/react-icons";
