@@ -190,6 +190,18 @@ export function TerminalPane({
       }
     };
 
+    // Shift+Enter sends newline (\n) instead of carriage return (\r)
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type === 'keydown' && event.key === 'Enter' && event.shiftKey) {
+        if (ptyReadySessions.has(sessionId)) {
+          const encoder = new TextEncoder();
+          invoke("pty_write", { id: sessionId, data: Array.from(encoder.encode('\n')) });
+        }
+        return false; // Prevent default Enter handling
+      }
+      return true;
+    });
+
     // Handle user input
     const onDataDisposable = term.onData((data) => {
       if (!ptyReadySessions.has(sessionId)) return;
