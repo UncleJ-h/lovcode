@@ -266,7 +266,10 @@ export interface VersionWithDownloads {
   date: string;
 }
 
+export type ClaudeCodeInstallType = "native" | "npm" | "none";
+
 export interface ClaudeCodeVersionInfo {
+  install_type: ClaudeCodeInstallType;
   current_version: string | null;
   available_versions: VersionWithDownloads[];
   autoupdater_disabled: boolean;

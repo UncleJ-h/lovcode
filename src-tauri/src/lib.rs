@@ -3947,6 +3947,26 @@ fn open_in_editor(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_file_at_line(path: String, line: usize) -> Result<(), String> {
+    // 尝试用 cursor，失败则用 code (VSCode)
+    let editors = ["cursor", "code", "zed"];
+
+    for editor in editors {
+        let result = std::process::Command::new(editor)
+            .arg("--goto")
+            .arg(format!("{}:{}", path, line))
+            .spawn();
+
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    // 都失败则用系统默认方式打开
+    open_in_editor(path)
+}
+
+#[tauri::command]
 fn get_settings_path() -> String {
     get_claude_dir()
         .join("settings.json")
@@ -4301,6 +4321,14 @@ async fn test_claude_cli(
 // Claude Code Version Management
 // ============================================================================
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ClaudeCodeInstallType {
+    Native,
+    Npm,
+    None,
+}
+
 #[derive(Debug, Serialize)]
 struct VersionWithDownloads {
     version: String,
@@ -4309,59 +4337,99 @@ struct VersionWithDownloads {
 
 #[derive(Debug, Serialize)]
 struct ClaudeCodeVersionInfo {
+    install_type: ClaudeCodeInstallType,
     current_version: Option<String>,
     available_versions: Vec<VersionWithDownloads>,
     autoupdater_disabled: bool,
 }
 
+/// Detect Claude Code installation type
+fn detect_claude_code_install_type() -> (ClaudeCodeInstallType, Option<String>) {
+    // Try running `claude --version` first (works for both Native and NPM)
+    if let Ok(output) = std::process::Command::new("/bin/sh")
+        .args(["-lc", "claude --version 2>/dev/null"])
+        .output()
+    {
+        if output.status.success() {
+            let version_str = String::from_utf8_lossy(&output.stdout);
+            // Parse version from output like "claude 1.0.58" or "1.0.58"
+            let version = version_str
+                .trim()
+                .split_whitespace()
+                .last()
+                .map(|s| s.to_string());
+
+            // Check if it's Native install (check for ~/.claude-code directory)
+            let home = dirs::home_dir().unwrap_or_default();
+            let native_dir = home.join(".claude-code");
+            let native_bin = home.join(".local/bin/claude");
+
+            if native_dir.exists() || native_bin.exists() {
+                return (ClaudeCodeInstallType::Native, version);
+            }
+
+            // Check if it's NPM install
+            if let Ok(npm_output) = std::process::Command::new("/bin/sh")
+                .args(["-lc", "npm list -g @anthropic-ai/claude-code --depth=0 2>/dev/null"])
+                .output()
+            {
+                if npm_output.status.success() {
+                    let stdout = String::from_utf8_lossy(&npm_output.stdout);
+                    if stdout.contains("@anthropic-ai/claude-code") {
+                        return (ClaudeCodeInstallType::Npm, version);
+                    }
+                }
+            }
+
+            // Claude exists but can't determine type, assume Native (newer default)
+            return (ClaudeCodeInstallType::Native, version);
+        }
+    }
+
+    (ClaudeCodeInstallType::None, None)
+}
+
 #[tauri::command]
 async fn get_claude_code_version_info() -> Result<ClaudeCodeVersionInfo, String> {
-    // Get current installed version (blocking)
-    let current_version = tauri::async_runtime::spawn_blocking(|| {
-        std::process::Command::new("npm")
-            .args(["list", "-g", "@anthropic-ai/claude-code", "--depth=0", "--json"])
-            .output()
-            .ok()
-            .and_then(|output| {
-                if output.status.success() {
-                    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-                    json.get("dependencies")?
-                        .get("@anthropic-ai/claude-code")?
-                        .get("version")?
-                        .as_str()
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    // Detect installation type and current version
+    let (install_type, current_version) = tauri::async_runtime::spawn_blocking(detect_claude_code_install_type)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    // Get available versions (blocking)
-    let versions: Vec<String> = tauri::async_runtime::spawn_blocking(|| {
-        std::process::Command::new("npm")
-            .args(["view", "@anthropic-ai/claude-code", "versions", "--json"])
-            .output()
-            .ok()
-            .and_then(|output| {
-                if output.status.success() {
-                    let versions: Vec<String> = serde_json::from_slice(&output.stdout).ok()?;
-                    Some(versions.into_iter().rev().take(20).collect())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // Fetch download counts from npm API
+    // Fetch available versions from npm registry API (no local npm needed)
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_default();
+
+    // Get versions list from npm registry
+    let versions: Vec<String> = match client
+        .get("https://registry.npmjs.org/@anthropic-ai/claude-code")
+        .send()
+        .await
+    {
+        Ok(resp) => resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|json| {
+                json.get("versions")?.as_object().map(|obj| {
+                    let mut versions: Vec<String> = obj.keys().cloned().collect();
+                    // Sort by semver (simple string sort works for most cases)
+                    versions.sort_by(|a, b| {
+                        let parse = |s: &str| -> Vec<u32> {
+                            s.split('.').filter_map(|p| p.parse().ok()).collect()
+                        };
+                        parse(b).cmp(&parse(a))
+                    });
+                    versions.into_iter().take(20).collect()
+                })
+            })
+            .unwrap_or_default(),
+        Err(_) => vec![],
+    };
+
+    // Fetch download counts from npm API
     let downloads_map: std::collections::HashMap<String, u64> = match client
         .get("https://api.npmjs.org/versions/@anthropic-ai%2Fclaude-code/last-week")
         .send()
@@ -4405,6 +4473,7 @@ async fn get_claude_code_version_info() -> Result<ClaudeCodeVersionInfo, String>
         .unwrap_or(false);
 
     Ok(ClaudeCodeVersionInfo {
+        install_type,
         current_version,
         available_versions,
         autoupdater_disabled,
@@ -4412,20 +4481,30 @@ async fn get_claude_code_version_info() -> Result<ClaudeCodeVersionInfo, String>
 }
 
 #[tauri::command]
-async fn install_claude_code_version(version: String) -> Result<String, String> {
+async fn install_claude_code_version(version: String, install_type: Option<String>) -> Result<String, String> {
     let is_specific_version = version != "latest";
+    let install_type_str = install_type.unwrap_or_else(|| "native".to_string());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let package = if version == "latest" {
-            "@anthropic-ai/claude-code@latest".to_string()
+        let cmd = if install_type_str == "npm" {
+            // NPM installation
+            let package = if version == "latest" {
+                "@anthropic-ai/claude-code@latest".to_string()
+            } else {
+                format!("@anthropic-ai/claude-code@{}", version)
+            };
+            format!("npm install -g {}", package)
         } else {
-            format!("@anthropic-ai/claude-code@{}", version)
+            // Native installation (default)
+            let version_arg = if version == "latest" { "".to_string() } else { version };
+            format!("curl -fsSL https://claude.ai/install.sh | bash -s {}", version_arg)
         };
 
-        let output = std::process::Command::new("npm")
-            .args(["install", "-g", &package])
+        // Use login shell to get proper PATH (GUI apps don't inherit terminal PATH)
+        let output = std::process::Command::new("/bin/sh")
+            .args(["-lc", &cmd])
             .output()
-            .map_err(|e| format!("Failed to run npm: {}", e))?;
+            .map_err(|e| format!("Failed to run install command: {}", e))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -5100,13 +5179,35 @@ fn git_generate_changelog(
 // ============================================================================
 
 #[tauri::command]
-fn diagnostics_detect_stack(project_path: String) -> Result<diagnostics::TechStack, String> {
-    diagnostics::detect_tech_stack(&project_path)
+async fn diagnostics_detect_stack(project_path: String) -> Result<diagnostics::TechStack, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        diagnostics::detect_tech_stack(&project_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn diagnostics_check_env(project_path: String) -> Result<diagnostics::EnvCheckResult, String> {
-    diagnostics::check_env_vars(&project_path)
+async fn diagnostics_check_env(project_path: String) -> Result<diagnostics::EnvCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        diagnostics::check_env_vars(&project_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn diagnostics_add_missing_keys(project_path: String, keys: Vec<String>) -> Result<usize, String> {
+    diagnostics::add_missing_keys_to_env(&project_path, keys)
+}
+
+#[tauri::command]
+async fn diagnostics_scan_file_lines(project_path: String, limit: usize, ignored_paths: Vec<String>) -> Result<Vec<diagnostics::FileLineCount>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        diagnostics::scan_file_lines(&project_path, limit, &ignored_paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ============================================================================
@@ -5344,6 +5445,7 @@ pub fn run() {
             has_previous_statusline,
             remove_statusline_template,
             open_in_editor,
+            open_file_at_line,
             open_session_in_editor,
             reveal_session_file,
             reveal_path,
@@ -5421,7 +5523,9 @@ pub fn run() {
             git_generate_changelog,
             // Diagnostics commands
             diagnostics_detect_stack,
-            diagnostics_check_env
+            diagnostics_check_env,
+            diagnostics_add_missing_keys,
+            diagnostics_scan_file_lines
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
