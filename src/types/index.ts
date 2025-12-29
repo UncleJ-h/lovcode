@@ -220,7 +220,41 @@ export type View =
   | { type: "kb-reference-doc"; source: string; docIndex: number }
   | { type: "marketplace"; category?: TemplateCategory }
   | { type: "template-detail"; template: TemplateComponent; category: TemplateCategory }
-  | { type: "feature-todo"; feature: FeatureType };
+  | { type: "feature-todo"; feature: FeatureType }
+  | { type: "annual-report-2025" };
+
+// ============================================================================
+// Annual Report Types
+// ============================================================================
+
+export interface FavoriteProject {
+  id: string;
+  path: string;
+  session_count: number;
+  message_count: number;
+}
+
+export interface TopCommand {
+  name: string;
+  count: number;
+}
+
+export interface AnnualReport2025 {
+  total_sessions: number;
+  total_messages: number;
+  active_days: number;
+  first_chat_date: string | null;
+  last_chat_date: string | null;
+  peak_hour: number;
+  peak_hour_count: number;
+  peak_weekday: number;
+  total_projects: number;
+  favorite_project: FavoriteProject | null;
+  top_commands: TopCommand[];
+  longest_streak: number;
+  daily_activity: Record<string, number>;
+  hourly_distribution: Record<string, number>;
+}
 
 // ============================================================================
 // User Types

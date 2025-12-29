@@ -55,6 +55,7 @@ import {
   ProjectList,
   SessionList,
   MessageView,
+  AnnualReport2025,
 } from "./views";
 
 // ============================================================================
@@ -252,7 +253,11 @@ function App() {
             onProjectClick={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
             onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
             onSearch={() => navigate({ type: "chat-projects" })}
+            onOpenAnnualReport={() => navigate({ type: "annual-report-2025" })}
           />
+        )}
+        {view.type === "annual-report-2025" && (
+          <AnnualReport2025 onClose={() => navigate({ type: "home" })} />
         )}
         {view.type === "workspace" && <WorkspaceView />}
         {view.type === "features" && <FeaturesView onFeatureClick={handleFeatureClick} currentFeature={currentFeature} />}
@@ -576,7 +581,11 @@ function App() {
             onProjectClick={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
             onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
             onSearch={() => navigate({ type: "chat-projects" })}
+            onOpenAnnualReport={() => navigate({ type: "annual-report-2025" })}
           />
+        )}
+        {view.type === "annual-report-2025" && (
+          <AnnualReport2025 onClose={() => navigate({ type: "home" })} />
         )}
         {view.type === "workspace" && <WorkspaceView />}
         {view.type === "features" && <FeaturesView onFeatureClick={handleFeatureClick} currentFeature={currentFeature} />}

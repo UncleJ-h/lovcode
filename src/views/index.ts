@@ -14,6 +14,7 @@ export { MarketplaceView, MarketplaceLayout, TemplateDetailView } from "./Market
 export { DistillMenu, DistillView, DistillDetailView, ReferenceView, KnowledgeLayout } from "./Knowledge";
 export { SettingsView, ClaudeCodeVersionSection } from "./Settings";
 export { WorkspaceView } from "./Workspace";
+export { AnnualReport2025 } from "./AnnualReport";
 export {
   VirtualChatList,
   ProjectList,

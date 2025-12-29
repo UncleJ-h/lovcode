@@ -112,7 +112,10 @@ export const SessionPanel = memo(function SessionPanel({
 }: SessionPanelProps) {
   const handleTitleChange = useCallback(
     (sessionId: string) => (title: string) => {
-      onSessionTitleChange(sessionId, title);
+      // Strip ANSI escape sequences and control characters from terminal title
+      // eslint-disable-next-line no-control-regex
+      const cleanTitle = title.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|[\x00-\x1f]/g, '').trim();
+      if (cleanTitle) onSessionTitleChange(sessionId, cleanTitle);
     },
     [onSessionTitleChange]
   );

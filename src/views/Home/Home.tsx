@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { FeatureType, Project, Session, LocalCommand } from "../../types";
 import { FEATURES, FEATURE_ICONS } from "../../constants";
-import { ActivityHeatmap, RecentActivity, QuickActions, CommandTrendChart } from "../../components/home";
+import { ActivityHeatmap, RecentActivity, QuickActions, CommandTrendChart, FeaturedCarousel } from "../../components/home";
 import { useInvokeQuery } from "../../hooks";
 
 interface HomeProps {
@@ -9,6 +9,7 @@ interface HomeProps {
   onProjectClick: (project: Project) => void;
   onSessionClick: (session: Session) => void;
   onSearch: () => void;
+  onOpenAnnualReport: () => void;
 }
 
 interface ActivityStats {
@@ -17,7 +18,7 @@ interface ActivityStats {
   detailed: Record<string, number>;
 }
 
-export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch }: HomeProps) {
+export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch, onOpenAnnualReport }: HomeProps) {
   const { data: projects } = useInvokeQuery<Project[]>(["projects"], "list_projects");
   const { data: sessions } = useInvokeQuery<Session[]>(["sessions"], "list_all_sessions");
   const { data: commands } = useInvokeQuery<LocalCommand[]>(["commands"], "list_local_commands");
@@ -60,6 +61,11 @@ export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch 
           Lovcode
         </h1>
         <p className="text-muted-foreground">Your Vibe Coding Hub</p>
+      </div>
+
+      {/* Featured Carousel */}
+      <div className="max-w-xl mx-auto w-full mb-6">
+        <FeaturedCarousel onOpenAnnualReport={onOpenAnnualReport} />
       </div>
 
       {/* Quick Actions */}

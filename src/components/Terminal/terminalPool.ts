@@ -87,6 +87,7 @@ export function getOrCreateTerminal(sessionId: string): PooledTerminal {
     lineHeight: 1.2,
     macOptionIsMeta: false,
     allowProposedApi: true,
+    scrollOnUserInput: false, // Let PTY output control scrolling, not user keystrokes
     theme: TERMINAL_THEME,
   });
 

@@ -286,11 +286,51 @@ export function TerminalPane({
     // Use streaming decoder to handle multi-byte UTF-8 chars split across events
     const decoder = new TextDecoder("utf-8", { fatal: false });
 
+    // Batch PTY data to reduce render frequency and prevent flicker
+    // When data arrives faster than frame rate, multiple writes cause visual jitter
+    let pendingBytes: number[] = [];
+    let writeFrameId: number | null = null;
+    let writeCount = 0;
+    let batchCount = 0;
+
+    const flushPendingData = () => {
+      writeFrameId = null;
+      if (pendingBytes.length === 0 || !mountState.isMounted) return;
+
+      writeCount++;
+      const bytesToWrite = pendingBytes.length;
+      const bytes = new Uint8Array(pendingBytes);
+      pendingBytes = [];
+      const text = decoder.decode(bytes, { stream: true });
+
+      console.log('[DEBUG][TerminalPane] write:', { writeCount, batchCount, bytesToWrite });
+
+      // Lock scroll position during write to prevent flicker from intermediate states
+      const viewport = pooled.container.querySelector('.xterm-viewport') as HTMLElement;
+      if (viewport) {
+        const scrollTop = viewport.scrollTop;
+        const onScroll = () => { viewport.scrollTop = scrollTop; };
+        viewport.addEventListener('scroll', onScroll);
+        term.write(text, () => {
+          // Remove scroll lock after write completes
+          viewport.removeEventListener('scroll', onScroll);
+        });
+      } else {
+        term.write(text);
+      }
+    };
+
     const unlistenData = listen<PtyDataEvent>("pty-data", (event) => {
       if (event.payload.id === sessionId && mountState.isMounted) {
-        const bytes = new Uint8Array(event.payload.data);
-        const text = decoder.decode(bytes, { stream: true });
-        term.write(text);
+        // Accumulate raw bytes (preserves UTF-8 boundary handling)
+        pendingBytes.push(...event.payload.data);
+        batchCount++;
+
+        // Schedule single write per frame
+        if (writeFrameId === null) {
+          writeFrameId = requestAnimationFrame(flushPendingData);
+          batchCount = 1; // Reset batch count for this frame
+        }
       }
     });
 
@@ -306,6 +346,10 @@ export function TerminalPane({
     // Cleanup - detach but don't dispose (preserves instance for reattachment)
     return () => {
       mountState.isMounted = false;
+      if (writeFrameId !== null) {
+        cancelAnimationFrame(writeFrameId);
+      }
+      pendingBytes = [];
       onDataDisposable.dispose();
       onTitleDisposable.dispose();
       unlistenData.then((fn) => fn());
