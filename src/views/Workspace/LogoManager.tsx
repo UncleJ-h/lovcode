@@ -34,11 +34,12 @@ function generateLogoPrompt(projectName: string, projectType?: string): string {
 
   return `Minimalist logo icon for "${name}" software project.
 Style: Warm academic, intellectual, high-end minimalist.
-Colors: Primary terracotta clay (#CC785C), warm off-white background, deep charcoal accents.
+Colors: Primary terracotta clay (#CC785C), deep charcoal accents.
+IMPORTANT: Transparent background (PNG with alpha channel).
 Shape: Simple geometric form, abstract symbol, clean lines.
 ${projectType ? `Theme: ${projectType} tool/application.` : ""}
-No text, no gradients. Single iconic shape. Suitable for app icon and favicon.
-Professional, memorable, works at small sizes (32x32).`;
+No text, no gradients, no background. Single iconic shape on transparent background.
+Suitable for app icon and favicon. Professional, memorable, works at small sizes (32x32).`;
 }
 
 export function LogoManager({ projectPath, embedded = false }: LogoManagerProps) {
@@ -60,6 +61,36 @@ export function LogoManager({ projectPath, embedded = false }: LogoManagerProps)
 
   // Auto-generated prompt based on project
   const autoPrompt = useMemo(() => generateLogoPrompt(projectName), [projectName]);
+
+  // Load previously generated logos from Application Support
+  const loadGeneratedLogos = useCallback(async () => {
+    try {
+      const result = await invoke<string>("exec_shell_command", {
+        command: `ls -t "$HOME/Library/Application Support/com.lovstudio.lovcode/generated-logos/"*.png 2>/dev/null | head -20`,
+        cwd: projectPath,
+      });
+      const files = result.trim().split('\n').filter(f => f);
+      if (files.length === 0) return;
+
+      const previews = await Promise.all(
+        files.map(async (path) => {
+          const base64 = await invoke<string>("read_file_base64", { path });
+          return `data:image/png;base64,${base64}`;
+        })
+      );
+      setGenPreviews(previews);
+      if (previews.length > 0) setSelectedPreview(0);
+    } catch {
+      // No logos yet, that's fine
+    }
+  }, [projectPath]);
+
+  // Load generated logos when dialog opens
+  useEffect(() => {
+    if (showGenDialog && genPreviews.length === 0) {
+      loadGeneratedLogos();
+    }
+  }, [showGenDialog, genPreviews.length, loadGeneratedLogos]);
 
   // Load current logo and versions
   const loadLogoData = useCallback(async () => {
@@ -91,13 +122,17 @@ export function LogoManager({ projectPath, embedded = false }: LogoManagerProps)
       const escapedPrompt = prompt.replace(/'/g, "'\\''").replace(/\n/g, ' ');
       const scriptPath = "$HOME/.claude/plugins/marketplaces/lovstudio-plugins-official/skills/image-gen/gen_image.py";
 
-      // Generate 2 variants in parallel
+      // Generate 2 variants in parallel, save to Application Support
       const generateOne = async (index: number): Promise<string> => {
-        const outputPath = `/tmp/lovcode-logo-${Date.now()}-${index}.png`;
-        await invoke<string>("exec_shell_command", {
-          command: `python3 ${scriptPath} '${escapedPrompt}' -o '${outputPath}' -q high --no-open`,
+        const timestamp = Date.now();
+        const filename = `logo-${timestamp}-${index}.png`;
+        // Get actual path from shell (expands $HOME)
+        const result = await invoke<string>("exec_shell_command", {
+          command: `dir="$HOME/Library/Application Support/com.lovstudio.lovcode/generated-logos" && mkdir -p "$dir" && python3 ${scriptPath} '${escapedPrompt}' -o "$dir/${filename}" -q high --no-open && echo "$dir/${filename}"`,
           cwd: projectPath,
         });
+        // Extract the echoed path (last line of output)
+        const outputPath = result.trim().split('\n').pop() || '';
         const base64 = await invoke<string>("read_file_base64", { path: outputPath });
         return `data:image/png;base64,${base64}`;
       };
@@ -127,10 +162,10 @@ export function LogoManager({ projectPath, embedded = false }: LogoManagerProps)
       });
 
       setShowGenDialog(false);
-      setGenPreviews([]);
-      setSelectedPreview(null);
-      setGenPrompt("");
       await loadLogoData();
+
+      // Notify ProjectLogo to refresh
+      window.dispatchEvent(new CustomEvent("logo-updated", { detail: { projectPath } }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -152,6 +187,7 @@ export function LogoManager({ projectPath, embedded = false }: LogoManagerProps)
           targetFilename: `logo${selected.substring(selected.lastIndexOf("."))}`,
         });
         await loadLogoData();
+        window.dispatchEvent(new CustomEvent("logo-updated", { detail: { projectPath } }));
       }
     } catch (err) {
       console.error("Failed to upload logo:", err);
@@ -166,6 +202,7 @@ export function LogoManager({ projectPath, embedded = false }: LogoManagerProps)
         logoPath: version.path,
       });
       await loadLogoData();
+      window.dispatchEvent(new CustomEvent("logo-updated", { detail: { projectPath } }));
     } catch (err) {
       console.error("Failed to set logo:", err);
     }

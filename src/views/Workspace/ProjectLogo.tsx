@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CubeIcon } from "@radix-ui/react-icons";
 
@@ -16,11 +16,24 @@ const sizeClasses = {
 export function ProjectLogo({ projectPath, size = "sm" }: ProjectLogoProps) {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadLogo = useCallback(() => {
     invoke<string | null>("get_project_logo", { projectPath })
       .then(setLogoSrc)
       .catch(() => setLogoSrc(null));
   }, [projectPath]);
+
+  useEffect(() => {
+    loadLogo();
+
+    // Listen for logo updates from LogoManager
+    const handleLogoUpdate = (e: CustomEvent) => {
+      if (e.detail?.projectPath === projectPath) {
+        loadLogo();
+      }
+    };
+    window.addEventListener("logo-updated", handleLogoUpdate as EventListener);
+    return () => window.removeEventListener("logo-updated", handleLogoUpdate as EventListener);
+  }, [projectPath, loadLogo]);
 
   const classes = sizeClasses[size];
 
