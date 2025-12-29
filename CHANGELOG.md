@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.0
+
+### Minor Changes
+
+- Add PTY data batching and scroll stabilization for smoother terminal rendering
+
+  - Batch PTY writes per animation frame to reduce render frequency
+  - Lock scroll position during write to prevent flicker
+  - Strip ANSI escape sequences from terminal title
+  - Add AnnualReport view and FeaturedCarousel component
+
 ## 0.19.0
 
 ### Minor Changes
