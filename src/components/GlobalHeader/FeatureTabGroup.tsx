@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useAtom } from "jotai";
 import { PlusIcon, ArchiveIcon, DashboardIcon } from "@radix-ui/react-icons";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
-import { useNavigate } from "@/hooks";
+import { useNavigate, useFeatureCreation } from "@/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ContextMenu,
@@ -19,6 +19,7 @@ import {
 import { ProjectLogo } from "@/views/Workspace/ProjectLogo";
 import { SortableFeatureTab } from "./FeatureTab";
 import { CreateFeatureDialog } from "./CreateFeatureDialog";
+import { useState } from "react";
 import type { WorkspaceProject, Feature, WorkspaceData } from "@/views/Workspace/types";
 
 interface FeatureTabGroupProps {
@@ -42,8 +43,13 @@ export function FeatureTabGroup({
   const [collapsedGroups, setCollapsedGroups] = useAtom(collapsedProjectGroupsAtom);
   const navigate = useNavigate();
   const [hasLogo, setHasLogo] = useState(true); // Default true to hide name initially
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [nextSeq, setNextSeq] = useState(0);
+  const {
+    showCreateDialog,
+    setShowCreateDialog,
+    nextSeq,
+    openCreateDialog,
+    createFeature,
+  } = useFeatureCreation(project);
 
   useEffect(() => {
     invoke<string | null>("get_project_logo", { projectPath: project.path })
@@ -143,54 +149,6 @@ export function FeatureTabGroup({
     await invoke("workspace_save", { data: newWorkspace });
   };
 
-  const handleAddFeature = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!workspace) return;
-
-    // Use global counter
-    setNextSeq((workspace.feature_counter ?? 0) + 1);
-    setShowCreateDialog(true);
-  };
-
-  const handleCreateFeature = async (name: string, description: string) => {
-    if (!workspace) return;
-
-    try {
-      // Backend handles seq and feature_counter atomically (global)
-      const feature = await invoke<Feature>("workspace_create_feature", {
-        projectId: project.id,
-        name,
-        description: description || undefined,
-      });
-
-      // Navigate after we have the feature id
-      navigate({ type: "workspace", projectId: project.id, featureId: feature.id, mode: "features" });
-
-      const newProjects = workspace.projects.map((p) =>
-        p.id === project.id
-          ? {
-              ...p,
-              features: [...p.features, feature],
-              active_feature_id: feature.id,
-              view_mode: "features" as const,
-            }
-          : p
-      );
-
-      const newWorkspace: WorkspaceData = {
-        ...workspace,
-        projects: newProjects,
-        active_project_id: project.id,
-        feature_counter: feature.seq,
-      };
-
-      setWorkspace(newWorkspace);
-      await invoke("workspace_save", { data: newWorkspace });
-    } catch (err) {
-      console.error("Failed to create feature:", err);
-    }
-  };
-
   const handleSelectFeature = async (featureId: string) => {
     if (!workspace) return;
 
@@ -224,7 +182,7 @@ export function FeatureTabGroup({
         <span>Dashboard</span>
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => handleAddFeature()} className="gap-2 cursor-pointer">
+      <ContextMenuItem onClick={() => openCreateDialog()} className="gap-2 cursor-pointer">
         <PlusIcon className="w-3.5 h-3.5" />
         <span>New Feature</span>
       </ContextMenuItem>
@@ -291,7 +249,7 @@ export function FeatureTabGroup({
           open={showCreateDialog}
           onOpenChange={setShowCreateDialog}
           seq={nextSeq}
-          onSubmit={handleCreateFeature}
+          onSubmit={createFeature}
         />
       </>
     );
@@ -351,7 +309,7 @@ export function FeatureTabGroup({
 
           {/* Add button */}
           <button
-            onClick={handleAddFeature}
+            onClick={openCreateDialog}
             onPointerDown={(e) => e.stopPropagation()}
             className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
             title="New Feature"
@@ -367,7 +325,7 @@ export function FeatureTabGroup({
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         seq={nextSeq}
-        onSubmit={handleCreateFeature}
+        onSubmit={createFeature}
       />
     </>
   );

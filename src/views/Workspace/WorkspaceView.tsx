@@ -915,7 +915,6 @@ export function WorkspaceView() {
             project={activeProject}
             onFeatureClick={handleDashboardFeatureClick}
             onFeatureStatusChange={handleDashboardFeatureStatusChange}
-            onAddFeature={() => handleAddFeature(activeProject.id)}
             onUnarchiveFeature={handleUnarchiveFeature}
           />
         ) : activeProject.view_mode === "home" ? (

@@ -13,6 +13,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CreateFeatureDialog } from "@/components/GlobalHeader/CreateFeatureDialog";
+import { useFeatureCreation } from "@/hooks";
 import { KanbanBoard } from "./KanbanBoard";
 import { ProjectLogo } from "./ProjectLogo";
 import { GitHistory } from "./GitHistory";
@@ -23,7 +25,6 @@ interface ProjectDashboardProps {
   project: WorkspaceProject;
   onFeatureClick: (featureId: string) => void;
   onFeatureStatusChange: (featureId: string, status: FeatureStatus) => void;
-  onAddFeature: () => void;
   onUnarchiveFeature: (featureId: string) => void;
 }
 
@@ -60,9 +61,16 @@ export function ProjectDashboard({
   project,
   onFeatureClick,
   onFeatureStatusChange,
-  onAddFeature,
   onUnarchiveFeature,
 }: ProjectDashboardProps) {
+  const {
+    showCreateDialog,
+    setShowCreateDialog,
+    nextSeq,
+    openCreateDialog,
+    createFeature,
+  } = useFeatureCreation(project);
+
   const stats = useMemo(() => {
     const activeFeatures = project.features.filter((f) => !f.archived);
     return {
@@ -183,7 +191,7 @@ export function ProjectDashboard({
               }
               action={
                 <button
-                  onClick={onAddFeature}
+                  onClick={openCreateDialog}
                   className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   <PlusIcon className="w-3.5 h-3.5" />
@@ -228,6 +236,13 @@ export function ProjectDashboard({
           </div>
         </div>
       </div>
+
+      <CreateFeatureDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        seq={nextSeq}
+        onSubmit={createFeature}
+      />
     </div>
   );
 }
