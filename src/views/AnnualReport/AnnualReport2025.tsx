@@ -20,11 +20,6 @@ function getHourLabel(hour: number): string {
   return "Night";
 }
 
-function formatPath(path: string): string {
-  const parts = path.split("/");
-  return parts.length > 2 ? `.../${parts.slice(-2).join("/")}` : path;
-}
-
 // Screen Components
 function TitleScreen() {
   return (
