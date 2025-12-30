@@ -242,6 +242,7 @@ export interface TopCommand {
 export interface AnnualReport2025 {
   total_sessions: number;
   total_messages: number;
+  total_commands: number;
   active_days: number;
   first_chat_date: string | null;
   last_chat_date: string | null;

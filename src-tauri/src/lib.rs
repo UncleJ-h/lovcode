@@ -3731,6 +3731,7 @@ pub struct TopCommand {
 pub struct AnnualReport2025 {
     pub total_sessions: usize,
     pub total_messages: usize,
+    pub total_commands: usize,
     pub active_days: usize,
     pub first_chat_date: Option<String>,
     pub last_chat_date: Option<String>,
@@ -3835,6 +3836,8 @@ async fn get_annual_report_2025() -> Result<AnnualReport2025, String> {
         let mut total_sessions = 0usize;
         let mut total_messages = 0usize;
         let mut project_stats: HashMap<String, (String, usize, usize)> = HashMap::new(); // id -> (path, sessions, messages)
+        let mut command_counts: HashMap<String, usize> = HashMap::new(); // command -> count (fallback)
+        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>").ok();
 
         if projects_dir.exists() {
             if let Ok(entries) = fs::read_dir(&projects_dir) {
@@ -3889,6 +3892,19 @@ async fn get_annual_report_2025() -> Result<AnnualReport2025, String> {
                                         if parsed.get("type").and_then(|t| t.as_str()) != Some("meta") {
                                             msg_count += 1;
                                         }
+                                        // Extract commands from assistant messages (for fallback stats)
+                                        if let Some(pattern) = &command_pattern {
+                                            if let Some(text) = parsed.get("message").and_then(|m| {
+                                                m.get("content").and_then(|c| c.as_str())
+                                            }) {
+                                                for cap in pattern.captures_iter(text) {
+                                                    if let Some(cmd_match) = cap.get(1) {
+                                                        let cmd = cmd_match.as_str().trim_start_matches('/').to_string();
+                                                        *command_counts.entry(cmd).or_insert(0) += 1;
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -3920,26 +3936,61 @@ async fn get_annual_report_2025() -> Result<AnnualReport2025, String> {
                 message_count: *messages,
             });
 
-        // Get top commands from command-stats index
+        // Get top commands from command-stats index (aggregate weekly data) or fallback to extracted
         let mut top_commands: Vec<TopCommand> = Vec::new();
-        let index_path = get_claude_dir().join("command-stats.json");
-        if index_path.exists() {
-            if let Ok(content) = fs::read_to_string(&index_path) {
-                if let Ok(stats) = serde_json::from_str::<HashMap<String, usize>>(&content) {
-                    let mut sorted: Vec<_> = stats.into_iter().collect();
-                    sorted.sort_by(|a, b| b.1.cmp(&a.1));
-                    top_commands = sorted
-                        .into_iter()
-                        .take(5)
-                        .map(|(name, count)| TopCommand { name, count })
-                        .collect();
+        let stats_path = get_command_stats_path();
+        let mut use_fallback = true;
+
+        if stats_path.exists() {
+            if let Ok(content) = fs::read_to_string(&stats_path) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(commands) = parsed.get("commands").and_then(|v| v.as_object()) {
+                        let mut aggregated: HashMap<String, usize> = HashMap::new();
+                        for (cmd_name, week_data) in commands {
+                            if let Some(weeks) = week_data.as_object() {
+                                let total: usize = weeks
+                                    .values()
+                                    .filter_map(|v| v.as_u64())
+                                    .map(|n| n as usize)
+                                    .sum();
+                                aggregated.insert(cmd_name.clone(), total);
+                            }
+                        }
+                        if !aggregated.is_empty() {
+                            let mut sorted: Vec<_> = aggregated.into_iter().collect();
+                            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                            top_commands = sorted
+                                .into_iter()
+                                .take(5)
+                                .map(|(name, count)| TopCommand { name, count })
+                                .collect();
+                            use_fallback = false;
+                        }
+                    }
                 }
             }
         }
 
+        // Fallback: use command counts extracted from session files
+        if use_fallback && !command_counts.is_empty() {
+            let mut sorted: Vec<_> = command_counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            top_commands = sorted
+                .into_iter()
+                .take(5)
+                .map(|(name, count)| TopCommand { name, count })
+                .collect();
+        }
+
+        // Count local commands
+        let total_commands = list_local_commands()
+            .map(|cmds| cmds.len())
+            .unwrap_or(0);
+
         Ok(AnnualReport2025 {
             total_sessions,
             total_messages,
+            total_commands,
             active_days: daily_activity.len(),
             first_chat_date: first_date,
             last_chat_date: last_date,
@@ -4427,6 +4478,11 @@ fn get_home_dir() -> String {
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    fs::write(&path, data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6120,6 +6176,7 @@ pub fn run() {
             get_mcp_config_path,
             get_home_dir,
             write_file,
+            write_binary_file,
             update_mcp_env,
             update_settings_env,
             delete_settings_env,

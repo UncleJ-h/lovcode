@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cross2Icon, ChevronDownIcon, DownloadIcon } from "@radix-ui/react-icons";
 import { domToCanvas } from "modern-screenshot";
+import { save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { AnnualReport2025 as AnnualReportData } from "../../types";
 import { useInvokeQuery } from "../../hooks";
 
@@ -482,48 +485,89 @@ function ShareableCard({ report }: { report: AnnualReportData }) {
             boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
           }}
         >
-          {/* 2x2 Core Stats Grid - Unified warm colors */}
+          {/* Stats Period Badge */}
+          <div
+            style={{
+              textAlign: "center",
+              marginBottom: 12,
+              paddingBottom: 12,
+              borderBottom: "1px solid rgba(216,90,42,0.1)",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                color: "#AA7A6A",
+                background: "rgba(216,90,42,0.08)",
+                padding: "4px 12px",
+                borderRadius: 10,
+                fontWeight: 500,
+              }}
+            >
+              统计周期：{report.first_chat_date || "2025.01"} - {report.last_chat_date || "2025.12"}
+            </span>
+          </div>
+
+          {/* 3-column Core Stats Grid */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 8,
             }}
           >
             {/* Conversations */}
-            <div style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 11, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>对话总数</div>
-              <div style={{ fontSize: 38, fontWeight: 800, color: "#D85A2A", lineHeight: 1 }}>
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>对话</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#D85A2A", lineHeight: 1 }}>
                 {report.total_sessions.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: "#AA7A6A", marginTop: 2 }}>次</div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>次</div>
             </div>
 
             {/* Messages */}
-            <div style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 11, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>消息数量</div>
-              <div style={{ fontSize: 38, fontWeight: 800, color: "#E8734A", lineHeight: 1 }}>
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>消息</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#E8734A", lineHeight: 1 }}>
                 {report.total_messages.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: "#AA7A6A", marginTop: 2 }}>条</div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>条</div>
+            </div>
+
+            {/* Commands */}
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>命令</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#D85A2A", lineHeight: 1 }}>
+                {report.total_commands.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>个</div>
             </div>
 
             {/* Active Days */}
-            <div style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 11, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>活跃天数</div>
-              <div style={{ fontSize: 38, fontWeight: 800, color: "#D85A2A", lineHeight: 1 }}>
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>活跃</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#E8734A", lineHeight: 1 }}>
                 {report.active_days}
               </div>
-              <div style={{ fontSize: 11, color: "#AA7A6A", marginTop: 2 }}>天</div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>天</div>
             </div>
 
             {/* Projects */}
-            <div style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 11, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>项目数量</div>
-              <div style={{ fontSize: 38, fontWeight: 800, color: "#E8734A", lineHeight: 1 }}>
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>项目</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#D85A2A", lineHeight: 1 }}>
                 {report.total_projects}
               </div>
-              <div style={{ fontSize: 11, color: "#AA7A6A", marginTop: 2 }}>个</div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>个</div>
+            </div>
+
+            {/* Longest Streak */}
+            <div style={{ textAlign: "center", padding: 10 }}>
+              <div style={{ fontSize: 10, color: "#996B5B", marginBottom: 4, fontWeight: 600 }}>连续</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#E8734A", lineHeight: 1 }}>
+                {report.longest_streak}
+              </div>
+              <div style={{ fontSize: 10, color: "#AA7A6A", marginTop: 2 }}>天</div>
             </div>
           </div>
 
@@ -574,22 +618,17 @@ function ShareableCard({ report }: { report: AnnualReportData }) {
             marginBottom: 16,
           }}
         >
-          {/* Secondary Stats Row */}
+          {/* Secondary Stats Row - Peak Time Info */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 8,
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
               paddingBottom: 14,
               borderBottom: "1px solid rgba(255,255,255,0.1)",
               marginBottom: 14,
             }}
           >
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 2 }}>最长连续</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#FFFFFF", lineHeight: 1 }}>{report.longest_streak}</div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>天</div>
-            </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginBottom: 2 }}>活跃时段</div>
               <div style={{ fontSize: 24, fontWeight: 800, color: "#FFFFFF", lineHeight: 1 }}>{report.peak_hour}:00</div>
@@ -639,18 +678,24 @@ function ShareableCard({ report }: { report: AnnualReportData }) {
           )}
         </div>
 
-        {/* Footer - Compact */}
-        <div style={{ textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 4 }}>
+        {/* Footer - with QR code */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <img
               src="/logo.png"
               alt="Lovcode"
               style={{ width: 20, height: 20, borderRadius: 4 }}
             />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF" }}>Lovcode</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>|</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>Your Vibe Coding Hub</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF" }}>Lovcode</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)" }}>Your Vibe Coding Hub</div>
+            </div>
           </div>
+          <img
+            src="/lovcode-qrcode.png"
+            alt="QR Code"
+            style={{ width: 48, height: 48, borderRadius: 4, background: "#FFFFFF", padding: 2 }}
+          />
         </div>
       </div>
     </div>
@@ -720,7 +765,7 @@ export function AnnualReport2025({ onClose }: AnnualReport2025Props) {
   );
 
   // Share functionality - uses domToCanvas with Portal (no UI flicker)
-  // Inspired by lovshot: clone DOM in memory, use scrollWidth/scrollHeight for original size
+  // Uses Tauri save dialog for proper file saving without Finder popup
   const handleShare = useCallback(async () => {
     const captureEl = shareCardRef.current;
     if (!captureEl || !report) return;
@@ -734,7 +779,7 @@ export function AnnualReport2025({ onClose }: AnnualReport2025Props) {
       // domToCanvas clones DOM in memory - no UI impact
       const canvas = await domToCanvas(captureEl, {
         scale: 2,
-        backgroundColor: "#F9F9F7",
+        backgroundColor: "#C54B24",
         width: originalWidth,
         height: originalHeight,
         style: {
@@ -745,17 +790,32 @@ export function AnnualReport2025({ onClose }: AnnualReport2025Props) {
         },
       });
 
-      // Convert canvas to blob and download
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.download = "lovcode-2025-report.png";
-          link.href = url;
-          link.click();
-          URL.revokeObjectURL(url);
-        }
-      }, "image/png");
+      // Convert canvas to blob
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, "image/png");
+      });
+
+      if (!blob) {
+        throw new Error("Failed to create blob");
+      }
+
+      // Use Tauri save dialog
+      const path = await save({
+        defaultPath: "lovcode-2025-report.png",
+        filters: [{ name: "PNG Image", extensions: ["png"] }],
+      });
+
+      if (path) {
+        // Convert blob to Uint8Array
+        const arrayBuffer = await blob.arrayBuffer();
+        const data = Array.from(new Uint8Array(arrayBuffer));
+
+        // Write file using Tauri command
+        await invoke("write_binary_file", { path, data });
+
+        // Reveal in Finder
+        await revealItemInDir(path);
+      }
     } catch (err) {
       console.error("Failed to generate image:", err);
     } finally {
