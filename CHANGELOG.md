@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1
+
+### Patch Changes
+
+- Move CommandTrendChart from Home page to Commands page for better context
+
 ## 0.21.0
 
 ### Minor Changes
