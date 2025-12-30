@@ -84,6 +84,10 @@ pnpm tauri build
 | State | Jotai |
 | Search | Tantivy (full-text search) |
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=markshawn2020/lovcode&type=Date)](https://star-history.com/#markshawn2020/lovcode&Date)
+
 ## License
 
 Apache-2.0
