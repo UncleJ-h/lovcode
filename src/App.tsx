@@ -251,7 +251,7 @@ function App() {
           <Home
             onFeatureClick={handleFeatureClick}
             onProjectClick={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
-            onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
+            onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
             onSearch={() => navigate({ type: "chat-projects" })}
             onOpenAnnualReport={() => navigate({ type: "annual-report-2025" })}
           />
@@ -264,8 +264,8 @@ function App() {
         {view.type === "chat-projects" && (
           <ProjectList
             onSelectProject={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
-            onSelectSession={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
-            onSelectChat={(c) => navigate({ type: "chat-messages", projectId: c.project_id, sessionId: c.session_id, summary: c.session_summary })}
+            onSelectSession={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
+            onSelectChat={(c) => navigate({ type: "chat-messages", projectId: c.project_id, projectPath: c.project_path, sessionId: c.session_id, summary: c.session_summary })}
           />
         )}
         {view.type === "chat-sessions" && (
@@ -273,15 +273,16 @@ function App() {
             projectId={view.projectId}
             projectPath={view.projectPath}
             onBack={() => navigate({ type: "chat-projects" })}
-            onSelect={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
+            onSelect={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
           />
         )}
         {view.type === "chat-messages" && (
           <MessageView
             projectId={view.projectId}
+            projectPath={view.projectPath}
             sessionId={view.sessionId}
             summary={view.summary}
-            onBack={() => navigate({ type: "chat-sessions", projectId: view.projectId, projectPath: "" })}
+            onBack={() => navigate({ type: "chat-sessions", projectId: view.projectId, projectPath: view.projectPath })}
           />
         )}
         {(view.type === "commands" || view.type === "command-detail" || view.type === "mcp" ||
@@ -382,7 +383,7 @@ function App() {
               <DistillDetailView
                 document={view.document}
                 onBack={() => navigate({ type: "kb-distill" })}
-                onNavigateSession={(projectId, sessionId, summary) => navigate({ type: "chat-messages", projectId, sessionId, summary })}
+                onNavigateSession={(projectId, projectPath, sessionId, summary) => navigate({ type: "chat-messages", projectId, projectPath, sessionId, summary })}
               />
             )}
             {(view.type === "kb-reference" || view.type === "kb-reference-doc") && (
@@ -579,7 +580,7 @@ function App() {
           <Home
             onFeatureClick={handleFeatureClick}
             onProjectClick={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
-            onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
+            onSessionClick={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
             onSearch={() => navigate({ type: "chat-projects" })}
             onOpenAnnualReport={() => navigate({ type: "annual-report-2025" })}
           />
@@ -593,8 +594,8 @@ function App() {
         {view.type === "chat-projects" && (
           <ProjectList
             onSelectProject={(p) => navigate({ type: "chat-sessions", projectId: p.id, projectPath: p.path })}
-            onSelectSession={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
-            onSelectChat={(c) => navigate({ type: "chat-messages", projectId: c.project_id, sessionId: c.session_id, summary: c.session_summary })}
+            onSelectSession={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
+            onSelectChat={(c) => navigate({ type: "chat-messages", projectId: c.project_id, projectPath: c.project_path, sessionId: c.session_id, summary: c.session_summary })}
           />
         )}
 
@@ -603,16 +604,17 @@ function App() {
             projectId={view.projectId}
             projectPath={view.projectPath}
             onBack={() => navigate({ type: "chat-projects" })}
-            onSelect={(s) => navigate({ type: "chat-messages", projectId: s.project_id, sessionId: s.id, summary: s.summary })}
+            onSelect={(s) => navigate({ type: "chat-messages", projectId: s.project_id, projectPath: s.project_path || '', sessionId: s.id, summary: s.summary })}
           />
         )}
 
         {view.type === "chat-messages" && (
           <MessageView
             projectId={view.projectId}
+            projectPath={view.projectPath}
             sessionId={view.sessionId}
             summary={view.summary}
-            onBack={() => navigate({ type: "chat-sessions", projectId: view.projectId, projectPath: "" })}
+            onBack={() => navigate({ type: "chat-sessions", projectId: view.projectId, projectPath: view.projectPath })}
           />
         )}
 
@@ -715,7 +717,7 @@ function App() {
               <DistillDetailView
                 document={view.document}
                 onBack={() => navigate({ type: "kb-distill" })}
-                onNavigateSession={(projectId, sessionId, summary) => navigate({ type: "chat-messages", projectId, sessionId, summary })}
+                onNavigateSession={(projectId, projectPath, sessionId, summary) => navigate({ type: "chat-messages", projectId, projectPath, sessionId, summary })}
               />
             )}
             {(view.type === "kb-reference" || view.type === "kb-reference-doc") && (

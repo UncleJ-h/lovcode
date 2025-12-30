@@ -13,7 +13,7 @@ import {
 interface DistillDetailViewProps {
   document: DistillDocument;
   onBack: () => void;
-  onNavigateSession: (projectId: string, sessionId: string, summary: string | null) => void;
+  onNavigateSession: (projectId: string, projectPath: string, sessionId: string, summary: string | null) => void;
 }
 
 export function DistillDetailView({
@@ -38,7 +38,7 @@ export function DistillDetailView({
       sessionId: document.session,
     });
     if (session) {
-      onNavigateSession(session.project_id, session.id, session.summary);
+      onNavigateSession(session.project_id, session.project_path || '', session.id, session.summary);
     }
   };
 

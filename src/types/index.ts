@@ -202,7 +202,7 @@ export type View =
   | { type: "features" }
   | { type: "chat-projects" }
   | { type: "chat-sessions"; projectId: string; projectPath: string }
-  | { type: "chat-messages"; projectId: string; sessionId: string; summary: string | null }
+  | { type: "chat-messages"; projectId: string; projectPath: string; sessionId: string; summary: string | null }
   | { type: "settings" }
   | { type: "commands" }
   | { type: "command-detail"; command: LocalCommand; scrollToChangelog?: boolean }

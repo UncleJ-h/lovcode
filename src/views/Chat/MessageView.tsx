@@ -23,16 +23,19 @@ import { originalChatAtom, markdownPreviewAtom } from "../../store";
 import { CollapsibleContent } from "./CollapsibleContent";
 import { ExportDialog } from "./ExportDialog";
 import { restoreSlashCommand } from "./utils";
+import { useAppConfig } from "../../context";
 import type { Message } from "../../types";
 
 interface MessageViewProps {
   projectId: string;
+  projectPath: string;
   sessionId: string;
   summary: string | null;
   onBack: () => void;
 }
 
-export function MessageView({ projectId, sessionId, summary, onBack }: MessageViewProps) {
+export function MessageView({ projectId, projectPath, sessionId, summary, onBack }: MessageViewProps) {
+  const { formatPath } = useAppConfig();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [originalChat, setOriginalChat] = useAtom(originalChatAtom);
@@ -86,12 +89,18 @@ export function MessageView({ projectId, sessionId, summary, onBack }: MessageVi
   return (
     <div className="px-6 py-8">
       <header className="mb-8">
-        <button
-          onClick={onBack}
-          className="text-muted-foreground-foreground hover:text-foreground flex items-center gap-1 text-sm mb-4"
-        >
-          <span>←</span> Sessions
-        </button>
+        <nav className="flex items-center gap-1.5 text-sm mb-4">
+          <button
+            onClick={onBack}
+            className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]"
+          >
+            {projectPath ? formatPath(projectPath) : projectId}
+          </button>
+          <span className="text-muted-foreground/50">/</span>
+          <span className="text-foreground truncate max-w-[300px]">
+            {summary || "Session"}
+          </span>
+        </nav>
         <div className="flex items-start justify-between gap-4">
           <ContextMenu>
             <ContextMenuTrigger asChild>
