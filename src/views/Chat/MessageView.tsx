@@ -183,7 +183,7 @@ export function MessageView({ projectId, projectPath, sessionId, summary: initia
         allMessages={filteredMessages}
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
-        defaultName={summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, "-") || "session"}
+        defaultName={initialSummary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, "-") || "session"}
       />
     </div>
   );
