@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.3
+
+### Patch Changes
+
+- 移除侧边栏 Feats 模式，仅保留 Sessions 视图
+
 ## 0.23.2
 
 ### Patch Changes
