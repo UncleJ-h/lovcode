@@ -57,7 +57,7 @@ function EditableTabTitle({
 
   return (
     <span
-      className="truncate min-w-0"
+      className="truncate min-w-0 px-1"
       onDoubleClick={(e) => { e.stopPropagation(); setValue(title); setEditing(true); }}
     >
       {title || fallback}
@@ -137,7 +137,7 @@ export const SessionPanel = memo(function SessionPanel({
             <TabsTrigger
               key={session.id}
               value={session.id}
-              className={`relative h-auto px-0 py-1 text-xs border-b-2 border-transparent rounded-none bg-transparent shadow-none text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-ink ${isActive ? "data-[state=active]:border-primary" : "data-[state=active]:border-muted-foreground"} group`}
+              className={`relative h-auto px-0 py-1 text-xs border-b-2 border-transparent rounded-none bg-transparent shadow-none text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-ink ${isActive ? "data-[state=active]:border-primary" : "data-[state=active]:border-muted-foreground"} group min-w-0 max-w-32`}
             >
               <EditableTabTitle
                 title={session.title}
