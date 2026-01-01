@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { ChevronLeftIcon, ChevronRightIcon, DrawingPinFilledIcon, PlusIcon } from "@radix-ui/react-icons";
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, DrawingPinFilledIcon, PlusIcon } from "@radix-ui/react-icons";
 import { SessionPanel } from "./SessionPanel";
 import type { LayoutNode } from "../../views/Workspace/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 export interface SessionState {
   id: string;
@@ -37,7 +43,7 @@ export interface PanelGridProps {
   /** @deprecated Use layout prop instead */
   direction?: "horizontal" | "vertical";
   /** Called when no panels exist and one should be created */
-  onInitialPanelCreate?: () => void;
+  onInitialPanelCreate?: (command?: string) => void;
 }
 
 /** Recursively render layout tree */
@@ -178,13 +184,33 @@ export function PanelGrid({
         <div className="text-center">
           <p className="text-muted-foreground mb-4">No terminals open</p>
           {onInitialPanelCreate && (
-            <button
-              onClick={onInitialPanelCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              <PlusIcon className="w-4 h-4" />
-              New Terminal
-            </button>
+            <div className="inline-flex rounded-lg overflow-hidden">
+              <button
+                onClick={() => onInitialPanelCreate()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+                New Terminal
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="px-2 py-2 bg-primary text-primary-foreground hover:bg-primary/90 border-l border-primary-foreground/20 transition-colors">
+                    <ChevronDownIcon className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onInitialPanelCreate()}>
+                    Terminal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onInitialPanelCreate("claude")}>
+                    Claude Code
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onInitialPanelCreate("codex")}>
+                    Codex
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>

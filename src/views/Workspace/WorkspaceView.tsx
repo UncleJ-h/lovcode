@@ -393,7 +393,7 @@ export function WorkspaceView() {
   );
 
   // Create initial panel (when feature has no panels)
-  const handleInitialPanelCreate = useCallback(() => {
+  const handleInitialPanelCreate = useCallback((command?: string) => {
     if (!activeProject || !activeFeature) return;
 
     const panelId = crypto.randomUUID();
@@ -403,9 +403,12 @@ export function WorkspaceView() {
     const featureId = activeFeature.id;
     const projectPath = activeProject.path;
 
+    // Set title based on command type
+    const title = command === "claude" ? "Claude Code" : command === "codex" ? "Codex" : "Terminal";
+
     const newPanel: StoredPanelState = {
       id: panelId,
-      sessions: [{ id: sessionId, pty_id: ptyId, title: "Untitled" }],
+      sessions: [{ id: sessionId, pty_id: ptyId, title, command }],
       active_session_id: sessionId,
       is_shared: false,
       cwd: projectPath,
