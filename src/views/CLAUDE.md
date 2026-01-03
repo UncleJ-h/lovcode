@@ -47,7 +47,7 @@ views/
 | `OutputStyles/` | `OutputStylesView.tsx` | ~150 | 输出样式配置 | ✅ |
 | `Knowledge/` | `KnowledgeView.tsx` | ~200 | 知识库浏览 | ✅ |
 | `Marketplace/` | `MarketplaceView.tsx` | ~300 | 模板市场 | ✅ |
-| `Settings/` | `SettingsView.tsx` | ~400 | 应用设置 | ✅ |
+| `Settings/` | `SettingsView.tsx` | 149 | 应用设置 | ✅ 已模块化 |
 | `Statusline/` | `StatuslineView.tsx` | ~200 | 状态栏配置 | ✅ |
 | `AnnualReport/` | `AnnualReport2025.tsx` | ~800 | 年度统计可视化 | ✅ |
 
@@ -77,6 +77,30 @@ Commands/
 **风险**: Race condition，状态可能覆盖
 
 **建议**: 使用 `useReducer` 统一状态更新
+
+---
+
+## 最佳实践示例
+
+### ✅ Settings/ 模块化重构 (2025-01-03)
+
+**原问题**: SettingsView.tsx 1270行，职责混杂
+
+**解决方案**:
+```
+Settings/
+├── SettingsView.tsx              # 主视图 (149行)
+├── SettingsEnvSection.tsx        # 环境变量管理 (346行)
+├── SettingsProxySection.tsx      # 代理预设管理 (844行)
+├── SettingsContextSection.tsx    # Context文件显示 (53行)
+└── hooks/
+    └── useSettingsState.ts       # 共享状态管理 (201行)
+```
+
+**成果**:
+- 主文件从1270行减少到149行 (减少88%)
+- 逻辑清晰分离：状态管理、环境变量、代理、Context
+- 类型检查通过，功能完全一致
 
 ---
 

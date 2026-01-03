@@ -31,7 +31,7 @@ src/
 | 文件 | 职责 |
 |------|------|
 | `main.tsx` | 应用入口，挂载 React 到 DOM |
-| `App.tsx` | 根组件，路由分发，全局状态初始化 (⚠️ 599行) |
+| `App.tsx` | 根组件，布局、全局状态 (145行) ✅ |
 | `vite-env.d.ts` | Vite 环境类型声明 |
 
 ### 子目录
@@ -51,31 +51,23 @@ src/
 
 ## 已知问题
 
-### 🔴 架构问题
+### ✅ 架构问题已修复 (2025-01-03)
 
-1. **App.tsx 过大** (599行)
-   - 重复实现了 `useNavigate` hook 的逻辑
-   - 导航状态管理存在冗余
-
-2. **两套导航系统并存**
-   - `hooks/useNavigate.ts` 使用 `navigationStateAtom`
-   - `hooks/useNavigation.ts` 使用独立 localStorage
-   - 应删除 `useNavigation.ts`，统一使用 `useNavigate.ts`
-
-3. **错误处理缺失**
-   ```typescript
-   // ❌ 当前: 静默吞掉错误
-   invoke("get_home_dir").catch(() => {});
-
-   // ✅ 应该: 提供用户反馈
-   invoke("get_home_dir").catch((err) => setError(err));
-   ```
+1. **App.tsx 已拆分** (606行 → 145行)
+   - `useAppNavigation` hook: 导航逻辑
+   - `AppRouter` component: 路由渲染
+   - `AppSettingsDialog`, `ProfileDialog`: 对话框组件
 
 ### 🟡 代码质量
 
-- 缺少 Error Boundary 组件
 - 部分 `useEffect` 依赖数组不完整
 - 缺少 `React.memo` 性能优化
+
+### ✅ 已修复 (2025-01-03)
+
+- ~~两套导航系统并存~~ → 删除 `useNavigation.ts`，统一使用 `useNavigate.ts`
+- ~~错误处理缺失~~ → 使用 `errorHandler.ts` 统一处理
+- ~~缺少 Error Boundary~~ → 已添加 `ErrorBoundary.tsx`
 
 ---
 
