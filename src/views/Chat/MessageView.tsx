@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { DotsHorizontalIcon } from "@radix-ui/react-icons";
+import { logNonCriticalError } from "../../lib/errorHandler";
 import { FileCode, Copy } from "lucide-react";
 import {
   ContextMenu,
@@ -51,11 +52,11 @@ export function MessageView({ projectId, projectPath, sessionId, summary: initia
       .finally(() => setLoading(false));
     invoke<string>("get_session_file_path", { projectId, sessionId })
       .then(setSessionFilePath)
-      .catch(() => {});
+      .catch(logNonCriticalError("获取会话文件路径"));
     // Fetch fresh summary to avoid stale cache from navigation state
     invoke<string | null>("get_session_summary", { projectId, sessionId })
       .then((s) => s && setFreshSummary(s))
-      .catch(() => {});
+      .catch(logNonCriticalError("获取会话摘要"));
   }, [projectId, sessionId]);
 
   const processContent = (content: string) => {

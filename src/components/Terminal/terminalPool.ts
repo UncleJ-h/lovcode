@@ -184,7 +184,10 @@ function setupAutoCopy(sessionId: string, term: Terminal): void {
   const disposable = term.onSelectionChange(() => {
     const selection = term.getSelection();
     if (selection) {
-      navigator.clipboard.writeText(selection).catch(() => {});
+      // 剪贴板错误通常是浏览器权限问题，静默处理
+      navigator.clipboard.writeText(selection).catch(() => {
+        // 浏览器可能限制剪贴板访问，此错误可忽略
+      });
     }
   });
 

@@ -9,6 +9,7 @@ import {
   ptyReadySessions,
   ptyInitLocks,
 } from "./terminalPool";
+import { handlePtyResizeError } from "../../lib/errorHandler";
 
 interface PtyDataEvent {
   id: string;
@@ -158,7 +159,7 @@ export function TerminalPane({
           id: sessionId,
           cols: term.cols,
           rows: term.rows,
-        }).catch(() => {});
+        }).catch(handlePtyResizeError);
 
         // Focus if autoFocus is true when PTY becomes ready
         if (autoFocusRef.current) {

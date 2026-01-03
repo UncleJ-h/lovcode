@@ -36,6 +36,9 @@ jobs:
       - name: ESLint
         run: pnpm lint
 
+      - name: Run tests
+        run: pnpm test run
+
   # ============================================================
   # Rust checks (Clippy, Tests, Format)
   # ============================================================

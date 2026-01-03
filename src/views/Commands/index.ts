@@ -4,4 +4,7 @@ export { CommandItemCard } from "./CommandItemCard";
 export { DraggableCommandItem } from "./DraggableCommandItem";
 export { DroppableFolder } from "./DroppableFolder";
 export { RootDropZone } from "./RootDropZone";
+export { DeprecateDialog } from "./DeprecateDialog";
+export { MoveDialog, CreateDirDialog } from "./MoveDialog";
+export { CommandsToolbar } from "./CommandsToolbar";
 export type { CommandSortKey, SortDirection, TreeNode, FolderNode } from "./types";

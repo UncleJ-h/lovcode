@@ -11,6 +11,7 @@ import { Label } from "./components/ui/label";
 import { Button } from "./components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { logNonCriticalError } from "./lib/errorHandler";
 
 // Modular imports
 import type {
@@ -107,8 +108,12 @@ function App() {
   const [distillWatchEnabled, setDistillWatchEnabled] = useState(true);
 
   useEffect(() => {
-    invoke<string>("get_home_dir").then(setHomeDir).catch(() => {});
-    invoke<boolean>("get_distill_watch_enabled").then(setDistillWatchEnabled).catch(() => {});
+    invoke<string>("get_home_dir")
+      .then(setHomeDir)
+      .catch(logNonCriticalError("获取用户主目录"));
+    invoke<boolean>("get_distill_watch_enabled")
+      .then(setDistillWatchEnabled)
+      .catch(logNonCriticalError("获取提炼监听状态"));
   }, []);
 
 
@@ -139,7 +144,9 @@ function App() {
   const appConfig: AppConfig = { homeDir, shortenPaths, setShortenPaths, formatPath };
 
   useEffect(() => {
-    invoke<TemplatesCatalog>("get_templates_catalog").then(setCatalog).catch(() => {});
+    invoke<TemplatesCatalog>("get_templates_catalog")
+      .then(setCatalog)
+      .catch(logNonCriticalError("获取模板目录"));
   }, []);
 
   const currentFeature: FeatureType | null =
