@@ -1,0 +1,84 @@
+{
+  "agents": {
+    "claude": {
+      "name": "Claude Code",
+      "profiles": {
+        "default": {
+          "label": "Default",
+          "description": "Standard Claude Code",
+          "args": []
+        },
+        "plan": {
+          "label": "Plan Mode",
+          "description": "Start in planning mode",
+          "args": ["--plan"]
+        },
+        "opus": {
+          "label": "Opus",
+          "description": "Use Claude Opus model",
+          "args": ["--model", "opus"]
+        },
+        "dangerously-skip-permissions": {
+          "label": "Skip Permissions",
+          "description": "Auto-approve all tool calls (dangerous)",
+          "args": ["--dangerously-skip-permissions"]
+        }
+      }
+    },
+    "codex": {
+      "name": "Codex",
+      "profiles": {
+        "default": {
+          "label": "Default",
+          "description": "Standard Codex",
+          "args": []
+        },
+        "high": {
+          "label": "High Reasoning",
+          "description": "High reasoning effort",
+          "args": ["--model-reasoning-effort", "high"]
+        },
+        "full-access": {
+          "label": "Full Access",
+          "description": "Dangerous full filesystem access",
+          "args": ["--full-auto"]
+        }
+      }
+    },
+    "gemini": {
+      "name": "Gemini CLI",
+      "profiles": {
+        "default": {
+          "label": "Default",
+          "description": "Standard Gemini CLI",
+          "args": []
+        },
+        "yolo": {
+          "label": "YOLO Mode",
+          "description": "Skip all confirmations",
+          "args": ["-y"]
+        }
+      }
+    },
+    "aider": {
+      "name": "Aider",
+      "profiles": {
+        "default": {
+          "label": "Default",
+          "description": "Standard Aider",
+          "args": []
+        },
+        "sonnet": {
+          "label": "Sonnet",
+          "description": "Use Claude Sonnet",
+          "args": ["--sonnet"]
+        },
+        "opus": {
+          "label": "Opus",
+          "description": "Use Claude Opus",
+          "args": ["--opus"]
+        }
+      }
+    }
+  }
+}

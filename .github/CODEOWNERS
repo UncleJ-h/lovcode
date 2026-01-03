@@ -10,3 +10,22 @@
 # Critical files that need extra review
 /src-tauri/src/lib.rs @UncleJ-h
 /src-tauri/src/pty_manager.rs @UncleJ-h
+/src-tauri/src/security.rs @UncleJ-h
+/src-tauri/src/workspace_store.rs @UncleJ-h
+
+# Observability
+/src/lib/sentry.ts @UncleJ-h
+/src/lib/webVitals.ts @UncleJ-h
+/src/lib/logger.ts @UncleJ-h
+
+# CI/CD
+/.github/workflows/ @UncleJ-h
+
+# Configuration
+/package.json @UncleJ-h
+/src-tauri/Cargo.toml @UncleJ-h
+/src-tauri/tauri.conf.json @UncleJ-h
+
+# Documentation
+/CLAUDE.md @UncleJ-h
+/docs/ @UncleJ-h

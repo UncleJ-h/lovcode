@@ -12,20 +12,21 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', 'src-tauri', 'third-parties'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'json-summary', 'html'],
       exclude: [
         'node_modules/',
         'src/test/',
         '**/*.d.ts',
         '**/*.config.*',
         'src/main.tsx',
+        'src/vite-env.d.ts',
       ],
       thresholds: {
-        // 初始目标：20% 覆盖率
-        lines: 20,
+        // Phase 2 目标：30% 覆盖率
+        lines: 30,
         functions: 20,
         branches: 20,
-        statements: 20,
+        statements: 30,
       },
     },
   },

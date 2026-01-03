@@ -2,11 +2,15 @@ import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { visualizer } from "rollup-plugin-visualizer";
 import { LovinspPlugin } from 'lovinsp';
 import pkg from './package.json';
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+
+// @ts-expect-error process is a nodejs global
+const isAnalyze = process.env.ANALYZE === 'true';
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -20,7 +24,17 @@ export default defineConfig(async () => ({
         path.resolve(__dirname, "src/main.tsx"),
       ],
     }),
-    react(), tailwindcss()],
+    react(),
+    tailwindcss(),
+    // Bundle analyzer - generates stats.html when ANALYZE=true
+    isAnalyze && visualizer({
+      filename: "dist/stats.html",
+      open: true,
+      gzipSize: true,
+      brotliSize: true,
+      template: "treemap", // or "sunburst", "network"
+    }),
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

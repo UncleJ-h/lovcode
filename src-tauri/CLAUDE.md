@@ -11,7 +11,7 @@ Rust + Tauri 2 + Tantivy (全文搜索) + PTY (终端)
 ```
 src-tauri/
 ├── src/
-│   ├── lib.rs              # 核心入口 (804行) ✅ 已重构
+│   ├── lib.rs              # 核心入口 (495行) ✅ 已重构
 │   ├── main.rs             # 应用入口
 │   ├── errors.rs           # 统一错误类型 (thiserror)
 │   ├── security.rs         # 安全验证 (路径/版本)
@@ -32,10 +32,17 @@ src-tauri/
 │   │   ├── projects.rs     # 项目和会话管理
 │   │   ├── report.rs       # 报告和统计
 │   │   ├── settings.rs     # 设置管理
-│   │   └── version.rs      # Claude Code 版本管理
-│   └── services/           # ✅ 服务模块 (新增)
-│       ├── mod.rs          # 模块入口
-│       └── search.rs       # 全文搜索 (Tantivy + Jieba)
+│   │   ├── sessions.rs     # 会话消息
+│   │   ├── version.rs      # Claude Code 版本管理
+│   │   ├── pty.rs          # PTY 终端命令
+│   │   ├── workspace.rs    # 工作区命令
+│   │   ├── hooks.rs        # Hook 监控命令
+│   │   └── diagnostics.rs  # 诊断命令
+│   ├── services/           # ✅ 服务模块 (新增)
+│   │   ├── mod.rs          # 模块入口
+│   │   └── search.rs       # 全文搜索 (Tantivy + Jieba)
+│   └── logs/               # ✅ 日志解析模块 (借鉴 vibe-kanban)
+│       └── mod.rs          # NormalizedEntry 统一日志格式
 ├── capabilities/           # Tauri 安全能力配置
 ├── icons/                  # 应用图标
 ├── Cargo.toml              # Rust 依赖配置
@@ -50,7 +57,7 @@ src-tauri/
 
 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|
-| `lib.rs` | ~800 | 应用启动·PTY·Workspace·Watcher | ✅ 已重构 |
+| `lib.rs` | ~495 | 应用启动·命令注册·事件处理 | ✅ 已重构 |
 | `main.rs` | ~20 | 应用入口 | ✅ |
 | `errors.rs` | ~50 | 统一错误类型 | ✅ |
 | `logging.rs` | ~50 | 结构化日志 (tracing) | ✅ 新增 |
@@ -65,8 +72,13 @@ src-tauri/
 
 | 文件 | 行数 | 职责 | 导出命令 |
 |------|------|------|----------|
-| `mod.rs` | ~70 | 统一导出 | - |
-| `agents.rs` | ~130 | Agent/Skill 管理 | `list_local_agents`, `list_local_skills` |
+| `mod.rs` | ~100 | 统一导出 | - |
+| `pty.rs` | ~60 | PTY 终端 | `pty_create`, `pty_write`, `pty_resize`, `pty_kill`... |
+| `workspace.rs` | ~90 | 工作区 | `workspace_load`, `workspace_save`, `workspace_add_project`... |
+| `hooks.rs` | ~40 | Hook 监控 | `hook_start_monitoring`, `hook_stop_monitoring`... |
+| `diagnostics.rs` | ~40 | 诊断 | `diagnostics_detect_stack`, `diagnostics_check_env`... |
+| `sessions.rs` | ~60 | 会话消息 | `get_session_messages` |
+| `agents.rs` | ~420 | Agent/Skill + Coding Agent 检测 (借鉴 vibe-kanban) | `list_local_agents`, `list_local_skills`, `list_coding_agents`, `get_coding_agent_info` |
 | `context.rs` | ~180 | 上下文文件 | `get_context_files`, `get_project_context` |
 | `files.rs` | ~400 | 文件操作 | `list_directory`, `read_file`, `exec_shell_command`, `save_project_logo`... |
 | `git.rs` | ~350 | Git 操作 | `git_has_changes`, `git_log`, `git_auto_commit`, `git_revert`... |
@@ -85,16 +97,29 @@ src-tauri/
 | `mod.rs` | ~10 | 模块入口 | - |
 | `search.rs` | ~400 | 全文搜索 | `build_search_index`, `search_chats`, `extract_content_with_meta` |
 
+### 日志解析模块 (src/logs/) ✅ 新增
+
+| 文件 | 行数 | 职责 | 导出类型 |
+|------|------|------|----------|
+| `mod.rs` | ~280 | 统一日志格式 (借鉴 vibe-kanban) | `NormalizedEntry`, `NormalizedEntryType`, `ActionType`, `ToolStatus`, `FileChange` |
+
+**核心类型:**
+- `NormalizedEntry`: 统一所有 AI Agent 的输出格式
+- `NormalizedEntryType`: 条目类型 (UserMessage, AssistantMessage, ToolUse, Thinking, Error...)
+- `ActionType`: 工具操作 (FileRead, FileEdit, CommandRun, Search, WebFetch...)
+- `ToolStatus`: 工具生命周期 (Created → Success/Failed/Denied/TimedOut)
+- `FileChange`: 文件变更 (Write, Delete, Rename, Edit)
+
 ---
 
-## ✅ 已完成重构 (2025-01-03)
+## ✅ 已完成重构 (2025-01-04)
 
 ### lib.rs 模块化拆分
 
 | 指标 | 重构前 | 重构后 | 改进 |
 |------|--------|--------|------|
-| lib.rs 行数 | 6384 | 804 | **-87%** |
-| 命令模块数 | 0 | 11 | +11 |
+| lib.rs 行数 | 6384 | 495 | **-92%** |
+| 命令模块数 | 0 | 17 | +17 |
 | 服务模块数 | 0 | 1 | +1 |
 | 单一职责 | ❌ | ✅ | 符合 |
 

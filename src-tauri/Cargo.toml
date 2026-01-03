@@ -50,21 +50,29 @@ version = "1"
 [dependencies.anyhow]
 version = "1"
 
-# Clippy 严格模式 - 逐步启用
+# Clippy 严格模式 - 渐进式启用
 [lints.clippy]
-# Phase 1: 代码质量组 (优先级设置)
-pedantic = { level = "warn", priority = -1 }  # 更严格的代码风格
-nursery = { level = "warn", priority = -1 }   # 实验性检查
+# === 核心安全规则 (deny 级别) ===
+unwrap_used = "deny"           # 禁止 .unwrap() - 必须处理错误
+panic = "deny"                 # 禁止显式 panic! - 使用 Result
+indexing_slicing = "warn"      # 警告直接索引 - 可能越界
 
-# Phase 2: 警告级别 (覆盖组设置)
-unwrap_used = "warn"           # 禁止 .unwrap()
-expect_used = "warn"           # 警告 .expect()
-panic = "warn"                 # 警告显式 panic!
+# === 代码质量规则 (warn 级别) ===
+expect_used = "warn"           # 警告 .expect() - 逐步消除
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
 
-# 允许的例外
-too_many_lines = "allow"       # 暂时允许长函数 (重构后移除)
+# === 允许的例外 (现实妥协) ===
+too_many_lines = "allow"       # 暂时允许长函数
 module_name_repetitions = "allow"
+missing_errors_doc = "allow"   # 暂时允许缺少错误文档
+missing_panics_doc = "allow"   # 暂时允许缺少 panic 文档
+needless_pass_by_value = "allow" # 部分场景需要
+doc_markdown = "allow"         # 文档格式暂不强制
 
 [lints.rust]
 unsafe_code = "warn"           # 警告 unsafe 代码
+
+[dev-dependencies]
+tempfile = "3.24.0"
 

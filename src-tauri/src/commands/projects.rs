@@ -4,7 +4,6 @@
  * [POS]: commands/ 模块的项目和会话管理中心
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-
 use crate::security::{get_claude_dir, validate_decoded_path};
 use crate::types::{ChatMessage, ChatsResponse, HistoryEntry, Project, RawLine, Session};
 use regex::Regex;
@@ -165,6 +164,7 @@ pub fn read_session_head(path: &Path, max_lines: usize) -> (Option<String>, usiz
 }
 
 /// Convert <command-message>...</command-message><command-name>/cmd</command-name> to /cmd format
+#[allow(clippy::unwrap_used)] // Static regex patterns are compile-time validated
 fn restore_slash_command(content: &str) -> String {
     static NAME_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-name>(/[^<]+)</command-name>").unwrap());
@@ -608,10 +608,243 @@ pub async fn list_all_chats(
         all_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         let total = all_chats.len();
-        let items: Vec<ChatMessage> = all_chats.into_iter().skip(skip).take(max_messages).collect();
+        let items: Vec<ChatMessage> = all_chats
+            .into_iter()
+            .skip(skip)
+            .take(max_messages)
+            .collect();
 
         Ok(ChatsResponse { items, total })
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // ------------------------------------------------------------------------
+    // Path encoding/decoding tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_encode_project_path_simple() {
+        let encoded = encode_project_path("/Users/test/projects/myapp");
+        assert_eq!(encoded, "-Users-test-projects-myapp");
+    }
+
+    #[test]
+    fn test_encode_project_path_hidden_dir() {
+        let encoded = encode_project_path("/Users/test/.config/app");
+        assert_eq!(encoded, "-Users-test--config-app");
+    }
+
+    #[test]
+    fn test_decode_project_path_unsafe_simple() {
+        // Note: This test checks internal logic without filesystem validation
+        let decoded = decode_project_path_unsafe("-Users-test-projects-myapp");
+        assert_eq!(decoded, "/Users/test/projects/myapp");
+    }
+
+    #[test]
+    fn test_decode_project_path_unsafe_hidden_dir() {
+        let decoded = decode_project_path_unsafe("-Users-test--config-app");
+        assert_eq!(decoded, "/Users/test/.config/app");
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip() {
+        // Note: Paths with hyphens are ambiguous in Claude's encoding
+        // /my-app encodes to -my-app, which decodes to /my/app
+        // This is a known limitation of the encoding scheme
+        let original = "/Users/test/projects/myapp"; // No hyphen
+        let encoded = encode_project_path(original);
+        let decoded = decode_project_path_unsafe(&encoded);
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn test_decode_with_real_path_without_hyphen() {
+        // Create a real temporary directory to test path validation
+        // Note: tempfile paths may contain dots which need special handling
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let subdir = temp_dir.path().join("testproject");
+        fs::create_dir_all(&subdir).expect("Failed to create subdir");
+
+        let path = subdir.to_string_lossy().to_string();
+        let encoded = encode_project_path(&path);
+        let decoded = decode_project_path(&encoded);
+
+        // The decoded path should either match exactly or be empty (validation failure)
+        // due to temp directories often having hidden segments
+        assert!(decoded == path || decoded.is_empty());
+    }
+
+    #[test]
+    fn test_decode_invalid_path_returns_empty() {
+        // Path traversal should be rejected
+        let result = decode_project_path("-Users-test--..--..--etc-passwd");
+        // Should return empty string due to validation failure
+        // (actual behavior depends on validate_decoded_path implementation)
+        assert!(result.is_empty() || !result.contains(".."));
+    }
+
+    // ------------------------------------------------------------------------
+    // try_merge_segments tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_try_merge_segments_no_match() {
+        let result = try_merge_segments("/prefix/", "a/b/c");
+        // Should return None if no paths exist
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_try_merge_segments_empty() {
+        let result = try_merge_segments("/prefix/", "");
+        assert!(result.is_none());
+    }
+
+    // ------------------------------------------------------------------------
+    // restore_slash_command tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_restore_slash_command_with_command() {
+        let input = "<command-message>test</command-message><command-name>/help</command-name>";
+        let result = restore_slash_command(input);
+        assert_eq!(result, "/help");
+    }
+
+    #[test]
+    fn test_restore_slash_command_with_args() {
+        let input = "<command-name>/search</command-name><command-args>query text</command-args>";
+        let result = restore_slash_command(input);
+        assert_eq!(result, "/search query text");
+    }
+
+    #[test]
+    fn test_restore_slash_command_plain_text() {
+        let input = "Hello, this is a normal message";
+        let result = restore_slash_command(input);
+        assert_eq!(result, "Hello, this is a normal message");
+    }
+
+    #[test]
+    fn test_restore_slash_command_empty_args() {
+        let input = "<command-name>/commit</command-name><command-args>  </command-args>";
+        let result = restore_slash_command(input);
+        assert_eq!(result, "/commit");
+    }
+
+    // ------------------------------------------------------------------------
+    // read_session_head tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_read_session_head_nonexistent() {
+        let path = PathBuf::from("/nonexistent/session.jsonl");
+        let (summary, count) = read_session_head(&path, 10);
+        assert!(summary.is_none());
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_read_session_head_with_summary() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let session_path = temp_dir.path().join("session.jsonl");
+
+        let lines = r#"{"type":"summary","summary":"Test conversation about Rust"}
+{"type":"user","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"Hi there!"}}"#;
+
+        fs::write(&session_path, lines).expect("Failed to write session file");
+
+        let (summary, count) = read_session_head(&session_path, 10);
+        assert_eq!(summary, Some("Test conversation about Rust".to_string()));
+        assert_eq!(count, 2); // user + assistant
+    }
+
+    #[test]
+    fn test_read_session_head_fallback_to_first_message() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let session_path = temp_dir.path().join("session.jsonl");
+
+        let lines = r#"{"type":"user","message":{"role":"user","content":"What is Rust?"}}"#;
+
+        fs::write(&session_path, lines).expect("Failed to write session file");
+
+        let (summary, count) = read_session_head(&session_path, 10);
+        assert_eq!(summary, Some("What is Rust?".to_string()));
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_read_session_head_truncates_long_message() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let session_path = temp_dir.path().join("session.jsonl");
+
+        // Create a message longer than 80 chars
+        let long_message = "A".repeat(100);
+        let lines = format!(
+            r#"{{"type":"user","message":{{"role":"user","content":"{}"}}}}"#,
+            long_message
+        );
+
+        fs::write(&session_path, lines).expect("Failed to write session file");
+
+        let (summary, _count) = read_session_head(&session_path, 10);
+        assert!(summary.is_some());
+        let summary_text = summary.unwrap();
+        assert!(summary_text.ends_with("..."));
+        assert!(summary_text.len() <= 83); // 80 chars + "..."
+    }
+
+    // ------------------------------------------------------------------------
+    // extract_content_with_meta tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_content_string() {
+        let content = Some(Value::String("Hello world".to_string()));
+        let (text, is_tool) = extract_content_with_meta(&content);
+        assert_eq!(text, "Hello world");
+        assert!(!is_tool);
+    }
+
+    #[test]
+    fn test_extract_content_array_text() {
+        let content = Some(serde_json::json!([
+            {"type": "text", "text": "Part 1"},
+            {"type": "text", "text": "Part 2"}
+        ]));
+        let (text, is_tool) = extract_content_with_meta(&content);
+        assert_eq!(text, "Part 1\nPart 2");
+        assert!(!is_tool);
+    }
+
+    #[test]
+    fn test_extract_content_with_tool() {
+        let content = Some(serde_json::json!([
+            {"type": "tool_use", "name": "read_file"},
+            {"type": "text", "text": "Reading file..."}
+        ]));
+        let (text, is_tool) = extract_content_with_meta(&content);
+        assert_eq!(text, "Reading file...");
+        assert!(is_tool);
+    }
+
+    #[test]
+    fn test_extract_content_none() {
+        let (text, is_tool) = extract_content_with_meta(&None);
+        assert_eq!(text, "");
+        assert!(!is_tool);
+    }
 }

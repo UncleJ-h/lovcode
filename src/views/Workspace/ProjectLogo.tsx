@@ -1,25 +1,29 @@
-import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { CubeIcon } from "@radix-ui/react-icons";
+import { useState, useEffect, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { CubeIcon } from '@radix-ui/react-icons';
 
 interface ProjectLogoProps {
   projectPath: string;
-  size?: "sm" | "md" | "lg";
+  size?: 'sm' | 'md' | 'lg';
 }
 
 const sizeClasses = {
-  sm: { icon: "w-4 h-4", img: "w-5 h-5" },
-  md: { icon: "w-5 h-5", img: "w-6 h-6" },
-  lg: { icon: "w-6 h-6", img: "w-8 h-8" },
+  sm: { icon: 'w-4 h-4', img: 'w-5 h-5' },
+  md: { icon: 'w-5 h-5', img: 'w-6 h-6' },
+  lg: { icon: 'w-6 h-6', img: 'w-8 h-8' },
 };
 
-export function ProjectLogo({ projectPath, size = "sm" }: ProjectLogoProps) {
+export function ProjectLogo({ projectPath, size = 'sm' }: ProjectLogoProps) {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
 
   const loadLogo = useCallback(() => {
-    invoke<string | null>("get_project_logo", { projectPath })
+    invoke<string | null>('get_project_logo', { projectPath })
       .then(setLogoSrc)
-      .catch(() => setLogoSrc(null));
+      .catch((err) => {
+        // Logo load failure is expected for projects without logos
+        console.debug('Failed to load project logo:', err);
+        setLogoSrc(null);
+      });
   }, [projectPath]);
 
   useEffect(() => {
@@ -31,8 +35,8 @@ export function ProjectLogo({ projectPath, size = "sm" }: ProjectLogoProps) {
         loadLogo();
       }
     };
-    window.addEventListener("logo-updated", handleLogoUpdate as EventListener);
-    return () => window.removeEventListener("logo-updated", handleLogoUpdate as EventListener);
+    window.addEventListener('logo-updated', handleLogoUpdate as EventListener);
+    return () => window.removeEventListener('logo-updated', handleLogoUpdate as EventListener);
   }, [projectPath, loadLogo]);
 
   const classes = sizeClasses[size];
@@ -45,7 +49,7 @@ export function ProjectLogo({ projectPath, size = "sm" }: ProjectLogoProps) {
     <img
       src={logoSrc}
       alt="Project logo"
-      className={`${classes.img} rounded object-contain flex-shrink-0`}
+      className={`${classes.img} flex-shrink-0 rounded object-contain`}
     />
   );
 }

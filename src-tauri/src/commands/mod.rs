@@ -4,27 +4,34 @@
  * [POS]: commands/ 模块入口，汇总所有命令供 lib.rs 注册
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-
 // ============================================================================
 // 子模块声明
 // ============================================================================
-
 pub mod agents; // Agent 和 Skill 管理
 pub mod context; // 上下文文件管理
+pub mod diagnostics; // 项目诊断分析
+pub mod executors; // Executor Profile 管理
 pub mod files; // 文件操作
 pub mod git; // Git 操作
+pub mod hooks; // Hook 监控
 pub mod knowledge; // 知识库管理
 pub mod local_commands; // 本地命令管理
 pub mod marketplace; // 模板市场
 pub mod projects; // 项目和会话管理
+pub mod pty; // PTY 终端管理
 pub mod report; // 报告和统计
+pub mod sessions; // 会话消息
 pub mod settings; // 设置管理
 pub mod version; // Claude Code 版本管理
+pub mod workspace; // 工作区管理
 
 // ============================================================================
 // 重导出所有命令
 // ============================================================================
 
+pub use agents::{get_coding_agent_info, list_coding_agents, list_local_agents, list_local_skills};
+pub use context::{get_context_files, get_project_context};
+pub use executors::{get_agent_profiles, list_executor_profiles, list_supported_agents};
 pub use files::{
     copy_file_to_project_assets, delete_project_logo, exec_shell_command, get_file_metadata,
     get_project_logo, list_directory, list_project_logos, read_file, read_file_base64,
@@ -34,6 +41,15 @@ pub use git::{
     git_auto_commit, git_generate_changelog, git_get_note, git_has_changes, git_log, git_revert,
     git_set_note,
 };
+pub use knowledge::{
+    find_session_project, get_distill_dir, get_distill_watch_enabled, list_distill_documents,
+    list_reference_docs, list_reference_sources, set_distill_watch_enabled, DISTILL_WATCH_ENABLED,
+};
+pub use local_commands::{
+    add_frontmatter_field, archive_command, deprecate_command, list_local_commands,
+    parse_frontmatter, rename_command, restore_command, update_command_aliases,
+    update_frontmatter_field,
+};
 pub use marketplace::{
     apply_statusline, check_mcp_installed, get_templates_catalog, has_previous_statusline,
     install_command_template, install_hook_template, install_mcp_template,
@@ -41,14 +57,12 @@ pub use marketplace::{
     remove_statusline_template, restore_previous_statusline, uninstall_mcp_template,
     update_settings_statusline, write_statusline_script,
 };
-pub use local_commands::{
-    add_frontmatter_field, archive_command, deprecate_command, list_local_commands,
-    parse_frontmatter, rename_command, restore_command, update_command_aliases,
-    update_frontmatter_field,
-};
 pub use projects::{
     decode_project_path, list_all_chats, list_all_sessions, list_projects, list_sessions,
     read_session_head,
+};
+pub use report::{
+    get_activity_stats, get_annual_report_2025, get_command_stats, get_command_weekly_stats,
 };
 pub use settings::{
     copy_to_clipboard, delete_settings_env, disable_settings_env, enable_settings_env,
@@ -61,12 +75,25 @@ pub use settings::{
 pub use version::{
     get_claude_code_version_info, install_claude_code_version, set_claude_code_autoupdater,
 };
-pub use knowledge::{
-    find_session_project, get_distill_dir, get_distill_watch_enabled, list_distill_documents,
-    list_reference_docs, list_reference_sources, set_distill_watch_enabled, DISTILL_WATCH_ENABLED,
+
+// 新增模块导出
+pub use diagnostics::{
+    diagnostics_add_missing_keys, diagnostics_check_env, diagnostics_detect_stack,
+    diagnostics_scan_file_lines,
 };
-pub use report::{
-    get_activity_stats, get_annual_report_2025, get_command_stats, get_command_weekly_stats,
+pub use hooks::{
+    hook_get_monitored, hook_is_monitoring, hook_notify_complete, hook_start_monitoring,
+    hook_stop_monitoring,
 };
-pub use context::{get_context_files, get_project_context};
-pub use agents::{list_local_agents, list_local_skills};
+pub use pty::{
+    pty_create, pty_exists, pty_flush_scrollback, pty_kill, pty_list, pty_purge_scrollback,
+    pty_read, pty_resize, pty_scrollback, pty_write,
+};
+pub use sessions::get_session_messages;
+pub use workspace::{
+    workspace_add_panel, workspace_add_project, workspace_create_feature, workspace_delete_feature,
+    workspace_get_pending_reviews, workspace_list_projects, workspace_load, workspace_remove_panel,
+    workspace_remove_project, workspace_rename_feature, workspace_save,
+    workspace_set_active_feature, workspace_set_active_project, workspace_toggle_panel_shared,
+    workspace_update_feature_status,
+};

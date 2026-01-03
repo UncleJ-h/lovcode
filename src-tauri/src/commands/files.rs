@@ -4,7 +4,6 @@
  * [POS]: commands/ 模块的文件操作命令中心
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-
 use crate::security;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -21,7 +20,7 @@ pub struct DirEntry {
     pub is_dir: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct FileMetadata {
     pub size: u64,
     pub modified: Option<u64>,
@@ -80,7 +79,8 @@ pub fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
         return Err(format!("File does not exist: {}", path));
     }
 
-    let metadata = fs::metadata(&file_path).map_err(|e| format!("Failed to get metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&file_path).map_err(|e| format!("Failed to get metadata: {}", e))?;
 
     let modified = metadata
         .modified()
@@ -423,7 +423,12 @@ pub async fn exec_shell_command(command: String, cwd: String) -> Result<String, 
             .output(),
     )
     .await
-    .map_err(|_| format!("Command timed out after {} seconds", SHELL_COMMAND_TIMEOUT_SECS))?
+    .map_err(|_| {
+        format!(
+            "Command timed out after {} seconds",
+            SHELL_COMMAND_TIMEOUT_SECS
+        )
+    })?
     .map_err(|e| format!("Failed to run command: {}", e))?;
 
     if output.status.success() {
@@ -432,5 +437,264 @@ pub async fn exec_shell_command(command: String, cwd: String) -> Result<String, 
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         Err(if stderr.is_empty() { stdout } else { stderr })
+    }
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ------------------------------------------------------------------------
+    // read_file tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_read_file_success() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "Hello, World!").expect("Failed to write file");
+
+        let result = read_file(file_path.to_string_lossy().to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Hello, World!");
+    }
+
+    #[test]
+    fn test_read_file_not_exists() {
+        let result = read_file("/nonexistent/path/to/file.txt".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_read_file_is_directory() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let result = read_file(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not a file"));
+    }
+
+    #[test]
+    fn test_read_file_utf8_content() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("chinese.txt");
+        fs::write(&file_path, "你好世界！🚀").expect("Failed to write file");
+
+        let result = read_file(file_path.to_string_lossy().to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "你好世界！🚀");
+    }
+
+    // ------------------------------------------------------------------------
+    // read_file_base64 tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_read_file_base64_success() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("test.bin");
+        fs::write(&file_path, &[0x48, 0x65, 0x6c, 0x6c, 0x6f]).expect("Failed to write file");
+
+        let result = read_file_base64(file_path.to_string_lossy().to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "SGVsbG8="); // "Hello" in base64
+    }
+
+    #[test]
+    fn test_read_file_base64_not_exists() {
+        let result = read_file_base64("/nonexistent/file.bin".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    // ------------------------------------------------------------------------
+    // get_file_metadata tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_file_metadata_success() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "Hello").expect("Failed to write file");
+
+        let result = get_file_metadata(file_path.to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let metadata = result.unwrap();
+        assert_eq!(metadata.size, 5);
+        assert!(metadata.modified.is_some());
+    }
+
+    #[test]
+    fn test_get_file_metadata_not_exists() {
+        let result = get_file_metadata("/nonexistent/file.txt".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    // ------------------------------------------------------------------------
+    // list_directory tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_list_directory_success() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        fs::write(temp_dir.path().join("file1.txt"), "").expect("Failed to write");
+        fs::write(temp_dir.path().join("file2.txt"), "").expect("Failed to write");
+        fs::create_dir(temp_dir.path().join("subdir")).expect("Failed to create dir");
+
+        let result = list_directory(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 3);
+        // Directories should come first
+        assert!(entries[0].is_dir);
+        assert_eq!(entries[0].name, "subdir");
+    }
+
+    #[test]
+    fn test_list_directory_ignores_node_modules() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        fs::write(temp_dir.path().join("index.js"), "").expect("Failed to write");
+        fs::create_dir(temp_dir.path().join("node_modules")).expect("Failed to create dir");
+
+        let result = list_directory(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "index.js");
+    }
+
+    #[test]
+    fn test_list_directory_ignores_git() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        fs::write(temp_dir.path().join("README.md"), "").expect("Failed to write");
+        fs::create_dir(temp_dir.path().join(".git")).expect("Failed to create dir");
+
+        let result = list_directory(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "README.md");
+    }
+
+    #[test]
+    fn test_list_directory_not_exists() {
+        let result = list_directory("/nonexistent/directory".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_list_directory_is_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "").expect("Failed to write");
+
+        let result = list_directory(file_path.to_string_lossy().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not a directory"));
+    }
+
+    // ------------------------------------------------------------------------
+    // save_project_logo tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_save_project_logo_creates_assets_dir() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let project_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Base64 of "test" (dGVzdA==)
+        let result = save_project_logo(
+            project_path.clone(),
+            "dGVzdA==".to_string(),
+            "logo-v1.png".to_string(),
+        );
+
+        assert!(result.is_ok());
+        assert!(temp_dir.path().join("assets").exists());
+        assert!(temp_dir.path().join("assets/logo-v1.png").exists());
+        assert!(temp_dir.path().join("assets/logo.png").exists());
+    }
+
+    #[test]
+    fn test_save_project_logo_invalid_base64() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let project_path = temp_dir.path().to_string_lossy().to_string();
+
+        let result = save_project_logo(
+            project_path,
+            "invalid!!!base64".to_string(),
+            "logo.png".to_string(),
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("decode base64"));
+    }
+
+    // ------------------------------------------------------------------------
+    // get_project_logo tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_project_logo_not_found() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let result = get_project_logo(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_project_logo_found() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let assets_dir = temp_dir.path().join("assets");
+        fs::create_dir_all(&assets_dir).expect("Failed to create assets dir");
+        fs::write(assets_dir.join("logo.png"), &[0x89, 0x50, 0x4E, 0x47]).expect("Failed to write");
+
+        let result = get_project_logo(temp_dir.path().to_string_lossy().to_string());
+        assert!(result.is_some());
+        let data_url = result.unwrap();
+        assert!(data_url.starts_with("data:image/png;base64,"));
+    }
+
+    // ------------------------------------------------------------------------
+    // delete_project_logo tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_delete_project_logo_versioned() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let assets_dir = temp_dir.path().join("assets");
+        fs::create_dir_all(&assets_dir).expect("Failed to create assets dir");
+        let logo_path = assets_dir.join("logo-v1.png");
+        fs::write(&logo_path, "test").expect("Failed to write");
+
+        let result = delete_project_logo(
+            temp_dir.path().to_string_lossy().to_string(),
+            logo_path.to_string_lossy().to_string(),
+        );
+        assert!(result.is_ok());
+        assert!(!logo_path.exists());
+    }
+
+    #[test]
+    fn test_delete_project_logo_current_blocked() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let assets_dir = temp_dir.path().join("assets");
+        fs::create_dir_all(&assets_dir).expect("Failed to create assets dir");
+        let logo_path = assets_dir.join("logo.png");
+        fs::write(&logo_path, "test").expect("Failed to write");
+
+        let result = delete_project_logo(
+            temp_dir.path().to_string_lossy().to_string(),
+            logo_path.to_string_lossy().to_string(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot delete current logo"));
     }
 }

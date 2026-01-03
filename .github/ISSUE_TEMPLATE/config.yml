@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discussions
+    url: https://github.com/lovable-dev/lovcode/discussions
+    about: For questions, ideas, and general discussions
+  - name: Documentation
+    url: https://github.com/lovable-dev/lovcode/tree/main/docs
+    about: Check the documentation first

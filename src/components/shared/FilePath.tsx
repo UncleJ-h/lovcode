@@ -1,11 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
-import { FileIcon, CopyIcon, ExternalLinkIcon } from "@radix-ui/react-icons";
+import { memo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { FileIcon, CopyIcon, ExternalLinkIcon } from '@radix-ui/react-icons';
 import {
   ContextMenu,
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
-} from "../ui/context-menu";
+} from '../ui/context-menu';
 
 interface FilePathProps {
   path: string;
@@ -15,7 +16,13 @@ interface FilePathProps {
   filenameOnly?: boolean;
 }
 
-export function FilePath({ path, basePath, className = "", showIcon = false, filenameOnly = false }: FilePathProps) {
+export const FilePath = memo(function FilePath({
+  path,
+  basePath,
+  className = '',
+  showIcon = false,
+  filenameOnly = false,
+}: FilePathProps) {
   // 显示文件名或相对路径，hover 显示绝对路径
   const displayPath = filenameOnly
     ? path.split('/').pop() || path
@@ -25,25 +32,25 @@ export function FilePath({ path, basePath, className = "", showIcon = false, fil
 
   const handleReveal = async () => {
     try {
-      await invoke("reveal_path", { path });
+      await invoke('reveal_path', { path });
     } catch (e) {
-      console.error("Failed to reveal path:", e);
+      console.error('Failed to reveal path:', e);
     }
   };
 
   const handleOpen = async () => {
     try {
-      await invoke("open_path", { path });
+      await invoke('open_path', { path });
     } catch (e) {
-      console.error("Failed to open path:", e);
+      console.error('Failed to open path:', e);
     }
   };
 
   const handleCopyPath = async () => {
     try {
-      await invoke("copy_to_clipboard", { text: path });
+      await invoke('copy_to_clipboard', { text: path });
     } catch (e) {
-      console.error("Failed to copy path:", e);
+      console.error('Failed to copy path:', e);
     }
   };
 
@@ -51,27 +58,27 @@ export function FilePath({ path, basePath, className = "", showIcon = false, fil
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <span
-          className={`inline-flex items-center gap-1 font-mono text-muted-foreground/50 hover:text-muted-foreground cursor-context-menu truncate ${className}`}
+          className={`text-muted-foreground/50 hover:text-muted-foreground inline-flex cursor-context-menu items-center gap-1 truncate font-mono ${className}`}
           title={path}
         >
-          {showIcon && <FileIcon className="w-3 h-3 flex-shrink-0" />}
+          {showIcon && <FileIcon className="h-3 w-3 flex-shrink-0" />}
           <span className="truncate">{displayPath}</span>
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={handleReveal}>
-          <ExternalLinkIcon className="w-4 h-4 mr-2" />
+          <ExternalLinkIcon className="mr-2 h-4 w-4" />
           Reveal in Finder
         </ContextMenuItem>
         <ContextMenuItem onClick={handleOpen}>
-          <FileIcon className="w-4 h-4 mr-2" />
+          <FileIcon className="mr-2 h-4 w-4" />
           Open File
         </ContextMenuItem>
         <ContextMenuItem onClick={handleCopyPath}>
-          <CopyIcon className="w-4 h-4 mr-2" />
+          <CopyIcon className="mr-2 h-4 w-4" />
           Copy Path
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

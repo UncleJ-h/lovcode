@@ -3,27 +3,27 @@
 // ============================================================================
 
 export type FeatureType =
-  | "chat"
-  | "workspace"
-  | "features"
-  | "settings"
-  | "statusline"
-  | "commands"
-  | "mcp"
-  | "skills"
-  | "hooks"
-  | "sub-agents"
-  | "output-styles"
-  | "marketplace"
-  | "kb-distill"
-  | "kb-reference";
+  | 'chat'
+  | 'workspace'
+  | 'features'
+  | 'settings'
+  | 'statusline'
+  | 'commands'
+  | 'mcp'
+  | 'skills'
+  | 'hooks'
+  | 'sub-agents'
+  | 'output-styles'
+  | 'marketplace'
+  | 'kb-distill'
+  | 'kb-reference';
 
 export interface FeatureConfig {
   type: FeatureType;
   label: string;
   description: string;
   available: boolean;
-  group: "history" | "config" | "marketplace" | "knowledge";
+  group: 'history' | 'config' | 'marketplace' | 'knowledge';
 }
 
 // ============================================================================
@@ -92,7 +92,7 @@ export interface LocalCommand {
   argument_hint: string | null;
   content: string;
   version: string | null;
-  status: "active" | "deprecated" | "archived";
+  status: 'active' | 'deprecated' | 'archived';
   deprecated_by: string | null;
   changelog: string | null;
   aliases: string[];
@@ -126,9 +126,9 @@ export interface DistillDocument {
 export interface McpServer {
   name: string;
   description: string | null;
-  type: string | null;        // "http" | "sse" | "stdio"
-  url: string | null;         // for http/sse servers
-  command: string | null;     // for stdio servers
+  type: string | null; // "http" | "sse" | "stdio"
+  url: string | null; // for http/sse servers
+  command: string | null; // for stdio servers
   args: string[];
   env: Record<string, string>;
 }
@@ -178,50 +178,61 @@ export interface TemplatesCatalog {
   hooks: TemplateComponent[];
   agents: TemplateComponent[];
   statuslines: TemplateComponent[];
-  "output-styles": TemplateComponent[];
+  'output-styles': TemplateComponent[];
   sources?: SourceInfo[];
 }
 
 export type TemplateCategory =
-  | "settings"
-  | "commands"
-  | "mcps"
-  | "skills"
-  | "hooks"
-  | "agents"
-  | "statuslines"
-  | "output-styles";
+  | 'settings'
+  | 'commands'
+  | 'mcps'
+  | 'skills'
+  | 'hooks'
+  | 'agents'
+  | 'statuslines'
+  | 'output-styles';
 
 // ============================================================================
 // View State Types
 // ============================================================================
 
 export type View =
-  | { type: "home" }
-  | { type: "workspace"; projectId?: string; featureId?: string; mode?: "features" | "dashboard" | "home" }
-  | { type: "features" }
-  | { type: "chat-projects" }
-  | { type: "chat-sessions"; projectId: string; projectPath: string }
-  | { type: "chat-messages"; projectId: string; projectPath: string; sessionId: string; summary: string | null }
-  | { type: "settings" }
-  | { type: "commands" }
-  | { type: "command-detail"; command: LocalCommand; scrollToChangelog?: boolean }
-  | { type: "mcp" }
-  | { type: "skills" }
-  | { type: "skill-detail"; skill: LocalSkill }
-  | { type: "hooks" }
-  | { type: "sub-agents" }
-  | { type: "sub-agent-detail"; agent: LocalAgent }
-  | { type: "output-styles" }
-  | { type: "statusline" }
-  | { type: "kb-distill" }
-  | { type: "kb-distill-detail"; document: DistillDocument }
-  | { type: "kb-reference" }
-  | { type: "kb-reference-doc"; source: string; docIndex: number }
-  | { type: "marketplace"; category?: TemplateCategory }
-  | { type: "template-detail"; template: TemplateComponent; category: TemplateCategory }
-  | { type: "feature-todo"; feature: FeatureType }
-  | { type: "annual-report-2025" };
+  | { type: 'home' }
+  | {
+      type: 'workspace';
+      projectId?: string;
+      featureId?: string;
+      mode?: 'features' | 'dashboard' | 'home';
+    }
+  | { type: 'features' }
+  | { type: 'chat-projects' }
+  | { type: 'chat-sessions'; projectId: string; projectPath: string }
+  | {
+      type: 'chat-messages';
+      projectId: string;
+      projectPath: string;
+      sessionId: string;
+      summary: string | null;
+    }
+  | { type: 'settings' }
+  | { type: 'commands' }
+  | { type: 'command-detail'; command: LocalCommand; scrollToChangelog?: boolean }
+  | { type: 'mcp' }
+  | { type: 'skills' }
+  | { type: 'skill-detail'; skill: LocalSkill }
+  | { type: 'hooks' }
+  | { type: 'sub-agents' }
+  | { type: 'sub-agent-detail'; agent: LocalAgent }
+  | { type: 'output-styles' }
+  | { type: 'statusline' }
+  | { type: 'kb-distill' }
+  | { type: 'kb-distill-detail'; document: DistillDocument }
+  | { type: 'kb-reference' }
+  | { type: 'kb-reference-doc'; source: string; docIndex: number }
+  | { type: 'marketplace'; category?: TemplateCategory }
+  | { type: 'template-detail'; template: TemplateComponent; category: TemplateCategory }
+  | { type: 'feature-todo'; feature: FeatureType }
+  | { type: 'annual-report-2025' };
 
 // ============================================================================
 // Annual Report Types
@@ -270,12 +281,12 @@ export interface UserProfile {
 // Sort & Filter Types
 // ============================================================================
 
-export type SortKey = "recent" | "sessions" | "name";
-export type SortDirection = "asc" | "desc";
-export type CommandSortKey = "usage" | "name";
-export type ChatViewMode = "projects" | "sessions" | "chats";
-export type ExportFormat = "markdown" | "json";
-export type MarkdownStyle = "full" | "bullet" | "qa";
+export type SortKey = 'recent' | 'sessions' | 'name';
+export type SortDirection = 'asc' | 'desc';
+export type CommandSortKey = 'usage' | 'name';
+export type ChatViewMode = 'projects' | 'sessions' | 'chats';
+export type ExportFormat = 'markdown' | 'json';
+export type MarkdownStyle = 'full' | 'bullet' | 'qa';
 
 // ============================================================================
 // Reference Types
@@ -303,11 +314,128 @@ export interface VersionWithDownloads {
   date: string;
 }
 
-export type ClaudeCodeInstallType = "native" | "npm" | "none";
+export type ClaudeCodeInstallType = 'native' | 'npm' | 'none';
 
 export interface ClaudeCodeVersionInfo {
   install_type: ClaudeCodeInstallType;
   current_version: string | null;
   available_versions: VersionWithDownloads[];
   autoupdater_disabled: boolean;
+}
+
+// ============================================================================
+// Executor Profile Types
+// ============================================================================
+
+export interface ExecutorProfile {
+  agent: string;
+  agent_name: string;
+  profile_id: string;
+  label: string;
+  description: string;
+  command: string;
+}
+
+// ============================================================================
+// Coding Agent Types (借鉴 vibe-kanban)
+// ============================================================================
+
+export type AgentCapability = 'session_fork' | 'setup_required' | 'mcp_support' | 'plan_mode';
+
+export type AgentAvailability =
+  | { status: 'available'; version: string | null }
+  | { status: 'needs_auth'; message: string }
+  | { status: 'not_installed' }
+  | { status: 'unknown'; error: string };
+
+export interface CodingAgentInfo {
+  id: string;
+  name: string;
+  description: string;
+  command: string;
+  availability: AgentAvailability;
+  capabilities: AgentCapability[];
+  mcp_config_path: string | null;
+  website: string | null;
+}
+
+// ============================================================================
+// NormalizedEntry Types (借鉴 vibe-kanban)
+// 统一 AI Agent 输出格式的日志解析系统
+// ============================================================================
+
+export type ToolStatus =
+  | { status: 'created' }
+  | { status: 'success' }
+  | { status: 'failed' }
+  | { status: 'denied'; reason: string | null }
+  | { status: 'pending_approval'; approval_id: string; requested_at: string; timeout_at: string }
+  | { status: 'timed_out' };
+
+export type FileChange =
+  | { action: 'write'; content: string }
+  | { action: 'delete' }
+  | { action: 'rename'; new_path: string }
+  | { action: 'edit'; unified_diff: string; has_line_numbers: boolean };
+
+export type CommandExitStatus =
+  | { type: 'exit_code'; code: number }
+  | { type: 'signal'; signal: number }
+  | { type: 'timed_out' };
+
+export interface CommandRunResult {
+  exit_status: CommandExitStatus | null;
+  output: string | null;
+}
+
+export type TodoItemStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface LogTodoItem {
+  content: string;
+  status: TodoItemStatus;
+  active_form: string | null;
+}
+
+export interface ToolResult {
+  success: boolean;
+  output: string | null;
+  error: string | null;
+}
+
+export type ActionType =
+  | { action: 'file_read'; path: string }
+  | { action: 'file_edit'; path: string; changes: FileChange[] }
+  | { action: 'command_run'; command: string; result: CommandRunResult | null }
+  | { action: 'search'; query: string }
+  | { action: 'web_fetch'; url: string }
+  | { action: 'tool'; tool_name: string; arguments: unknown | null; result: ToolResult | null }
+  | { action: 'task_create'; description: string }
+  | { action: 'plan_presentation'; plan: string }
+  | { action: 'todo_management'; todos: LogTodoItem[]; operation: string }
+  | { action: 'other'; description: string };
+
+export type NormalizedEntryError =
+  | 'agent_error'
+  | 'api_error'
+  | 'network_error'
+  | 'permission_error'
+  | 'timeout_error'
+  | 'unknown';
+
+export type NormalizedEntryType =
+  | { type: 'user_message' }
+  | { type: 'user_feedback'; denied_tool: string }
+  | { type: 'assistant_message' }
+  | { type: 'tool_use'; tool_name: string; action_type: ActionType; status: ToolStatus }
+  | { type: 'system_message' }
+  | { type: 'error_message'; error_type: NormalizedEntryError }
+  | { type: 'thinking' }
+  | { type: 'loading' }
+  | { type: 'next_action'; failed: boolean; execution_processes: number; needs_setup: boolean };
+
+export interface NormalizedEntry {
+  timestamp: string | null;
+  entry_type: NormalizedEntryType;
+  content: string;
+  metadata?: unknown;
 }

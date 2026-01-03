@@ -23,7 +23,7 @@ lovcode/
 │
 ├── src-tauri/              # Rust 后端 (Tauri 2) ✅ 已模块化
 │   └── src/
-│       ├── lib.rs          # 应用入口 (804行) ✅
+│       ├── lib.rs          # 应用入口 (495行) ✅
 │       ├── main.rs         # 程序入口
 │       ├── errors.rs       # 统一错误类型
 │       ├── security.rs     # 安全验证
@@ -32,18 +32,23 @@ lovcode/
 │       ├── workspace_store.rs  # 工作区持久化
 │       ├── diagnostics.rs  # 项目诊断分析
 │       ├── hook_watcher.rs # 文件监听
-│       ├── commands/       # ✅ 命令模块 (11个)
+│       ├── commands/       # ✅ 命令模块 (17个)
 │       │   ├── agents.rs       # Agent/Skill 管理
 │       │   ├── context.rs      # 上下文文件
+│       │   ├── diagnostics.rs  # 诊断命令
 │       │   ├── files.rs        # 文件操作
 │       │   ├── git.rs          # Git 操作
+│       │   ├── hooks.rs        # Hook 监控
 │       │   ├── knowledge.rs    # 知识库
 │       │   ├── local_commands.rs # 本地命令
 │       │   ├── marketplace.rs  # 模板市场
 │       │   ├── projects.rs     # 项目会话
+│       │   ├── pty.rs          # PTY 终端
 │       │   ├── report.rs       # 报告统计
+│       │   ├── sessions.rs     # 会话消息
 │       │   ├── settings.rs     # 设置管理
-│       │   └── version.rs      # 版本管理
+│       │   ├── version.rs      # 版本管理
+│       │   └── workspace.rs    # 工作区管理
 │       └── services/       # ✅ 服务模块
 │           └── search.rs       # 全文搜索 (Tantivy + Jieba)
 │
@@ -99,10 +104,10 @@ pnpm tauri build    # 构建发布包
 
 | 规则 | 标准 | 状态 |
 |------|------|------|
-| 文件行数 | ≤ 800 行 | ✅ lib.rs 804行 |
+| 文件行数 | ≤ 500 行 | ✅ lib.rs 495行 |
 | 函数行数 | ≤ 20 行 | ✅ |
 | 缩进层级 | ≤ 3 层 | ✅ |
-| 文件夹文件数 | ≤ 8 个/层 | ⚠️ commands/ 11个 |
+| 文件夹文件数 | ≤ 8 个/层 | ⚠️ commands/ 17个 (设计决策) |
 
 ### 代码坏味道检测
 

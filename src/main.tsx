@@ -1,12 +1,18 @@
-import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { loader } from "@monaco-editor/react";
-import App from "./App";
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import "./index.css";
+import ReactDOM from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { loader } from '@monaco-editor/react';
+import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { initSentry } from './lib/sentry';
+import { initWebVitals } from './lib/webVitals';
+import './index.css';
+
+// Initialize observability (before React renders)
+initSentry();
+initWebVitals();
 
 // Configure Monaco Editor to use local bundled version (avoid CDN issues)
-loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs" } });
+loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,10 +25,10 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
-  </ErrorBoundary>,
+  </ErrorBoundary>
 );
