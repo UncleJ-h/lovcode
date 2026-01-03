@@ -1,65 +1,248 @@
-# CLAUDE.md
+# Lovcode - AI Coding Tools 的桌面伴侣
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Tauri 2 + React 19 + TypeScript + Rust
 
-## Design System
+> 代码是机器相，文档是语义相，两相必须同构。
+> 任一相变化，必须在另一相显现，否则视为未完成。
 
-This project uses **Lovstudio Warm Academic Style (暖学术风格)**
+---
 
-Reference complete design guide: file:///Users/mark/@lovstudio/design/design-guide.md
+## 架构总览
 
-### Quick Rules
-1. **禁止硬编码颜色**：必须使用 semantic 类名（如 `bg-primary`、`text-muted-foreground`）
-2. **字体配对**：标题用 `font-serif`，正文用默认 `font-sans`
-3. **圆角风格**：使用 `rounded-lg`、`rounded-xl`、`rounded-2xl`
-4. **主色调**：陶土色（按钮/高亮）+ 暖米色背景 + 炭灰文字
-5. **组件优先**：优先使用 shadcn/ui 组件
-
-### Color Palette
-- **Primary**: #CC785C (陶土色 Terracotta)
-- **Background**: #F9F9F7 (暖米色 Warm Beige)
-- **Foreground**: #181818 (炭灰色 Charcoal)
-- **Border**: #E8E6DC
-
-### Common Patterns
-- 主按钮: `bg-primary text-primary-foreground hover:bg-primary/90`
-- 卡片: `bg-card border border-border rounded-xl`
-- 标题: `font-serif text-foreground`
-
-## Project Overview
-
-Lovcode is a Vibe Coding assistant desktop app built with Tauri 2 + React 19 + TypeScript. Primary focus is supporting AI coding tool ecosystems (claude code, codex, etc.) with chat history viewer as the first feature.
-
-## Commands
-
-```bash
-# Frontend development (hot reload)
-pnpm dev
-
-# Type check + production build
-pnpm build
-
-# Run Tauri desktop app (auto-starts pnpm dev)
-pnpm tauri dev
-
-# Build distributable
-pnpm tauri build
+```
+lovcode/
+├── src/                    # React 前端 (Vite, TypeScript)
+│   ├── components/         # UI 组件库 (shadcn/ui + 业务组件)
+│   ├── views/              # 页面视图 (14 个功能模块)
+│   ├── store/              # 状态管理 (Jotai atoms)
+│   ├── hooks/              # 自定义 hooks
+│   ├── types/              # TypeScript 类型定义
+│   ├── context/            # React Context
+│   ├── lib/                # 工具函数
+│   └── constants/          # 常量定义
+│
+├── src-tauri/              # Rust 后端 (Tauri 2) ✅ 已模块化
+│   └── src/
+│       ├── lib.rs          # 应用入口 (804行) ✅
+│       ├── main.rs         # 程序入口
+│       ├── errors.rs       # 统一错误类型
+│       ├── security.rs     # 安全验证
+│       ├── types.rs        # 共享类型
+│       ├── pty_manager.rs  # 终端会话管理
+│       ├── workspace_store.rs  # 工作区持久化
+│       ├── diagnostics.rs  # 项目诊断分析
+│       ├── hook_watcher.rs # 文件监听
+│       ├── commands/       # ✅ 命令模块 (11个)
+│       │   ├── agents.rs       # Agent/Skill 管理
+│       │   ├── context.rs      # 上下文文件
+│       │   ├── files.rs        # 文件操作
+│       │   ├── git.rs          # Git 操作
+│       │   ├── knowledge.rs    # 知识库
+│       │   ├── local_commands.rs # 本地命令
+│       │   ├── marketplace.rs  # 模板市场
+│       │   ├── projects.rs     # 项目会话
+│       │   ├── report.rs       # 报告统计
+│       │   ├── settings.rs     # 设置管理
+│       │   └── version.rs      # 版本管理
+│       └── services/       # ✅ 服务模块
+│           └── search.rs       # 全文搜索 (Tantivy + Jieba)
+│
+├── third-parties/          # Git 子模块 (文档/模板)
+├── marketplace/            # 社区模板市场
+└── docs/                   # 项目文档
 ```
 
-## Architecture
+---
 
-**Dual-layer architecture:**
-- `src/` - React frontend (Vite, port 1420)
-- `src-tauri/` - Rust backend (Tauri 2)
+## 核心命令
 
-**Frontend-backend communication:**
-- Use `invoke()` from `@tauri-apps/api/core` to call Rust commands
-- Define Rust commands with `#[tauri::command]` in `src-tauri/src/lib.rs`
-- Register commands in `tauri::generate_handler![]`
+```bash
+pnpm tauri dev      # 开发模式 (前后端热重载)
+pnpm typecheck      # TypeScript 类型检查
+pnpm clippy         # Rust 代码检查
+pnpm audit          # 依赖安全审计
+pnpm tauri build    # 构建发布包
+```
 
-## Conventions
+**禁止**: 本地运行 `pnpm tauri dev` 时不要执行 `pnpm build`
 
-- CSS: Tailwind CSS preferred
-- No dynamic imports or setTimeout unless necessary
-- Extract shared components when patterns repeat across multiple components
-- 不要执行pnpm build等，因为本地在运行 pnpm tauri dev
+---
+
+## 设计系统: Lovstudio 暖学术风格
+
+| 元素 | 规范 |
+|------|------|
+| 主色 | `#CC785C` 陶土色 (Primary) |
+| 背景 | `#F9F9F7` 暖米色 |
+| 前景 | `#181818` 炭灰色 |
+| 边框 | `#E8E6DC` |
+| 标题 | `font-serif` |
+| 正文 | `font-sans` |
+| 圆角 | `rounded-lg` / `rounded-xl` / `rounded-2xl` |
+
+**铁律**:
+- 禁止硬编码颜色，必须用 semantic 类名
+- 优先使用 shadcn/ui 组件
+- 主按钮: `bg-primary text-primary-foreground hover:bg-primary/90`
+- 卡片: `bg-card border border-border rounded-xl`
+
+---
+
+## 代码规范
+
+### Linus 品味准则
+
+```
+好代码不需要例外。三个以上分支立即停止重构。
+能消失的分支永远比能写对的分支更优雅。
+```
+
+| 规则 | 标准 | 状态 |
+|------|------|------|
+| 文件行数 | ≤ 800 行 | ✅ lib.rs 804行 |
+| 函数行数 | ≤ 20 行 | ✅ |
+| 缩进层级 | ≤ 3 层 | ✅ |
+| 文件夹文件数 | ≤ 8 个/层 | ⚠️ commands/ 11个 |
+
+### 代码坏味道检测
+
+- **僵化**: 微小改动引发连锁修改
+- **冗余**: 相同逻辑重复出现
+- **循环依赖**: 模块互相纠缠
+- **脆弱性**: 一处修改导致无关部分损坏
+- **晦涩性**: 代码意图不明
+
+发现坏味道 → 立即询问是否优化 → 给出改进建议
+
+### Rust 规范
+
+```toml
+# 已配置 Clippy 严格模式
+[lints.clippy]
+unwrap_used = "warn"    # 禁止 .unwrap()
+expect_used = "warn"    # 警告 .expect()
+panic = "warn"          # 警告显式 panic!
+```
+
+- 使用 `thiserror` 定义错误类型
+- 使用 `anyhow` 处理错误传播
+- 文件写入必须原子化 (临时文件 + 重命名)
+
+### TypeScript 规范
+
+- 严格模式 (`strict: true`)
+- 禁止 `any`，限制 `unknown` 使用
+- 前后端类型必须同步
+- 错误必须有用户反馈，禁止 `.catch(() => {})`
+
+---
+
+## GEB 分形文档协议
+
+### 三层结构
+
+| 层级 | 位置 | 职责 | 触发更新 |
+|------|------|------|----------|
+| L1 | `/CLAUDE.md` | 项目宪法·全局地图 | 架构变更/顶级模块增删 |
+| L2 | `/{module}/CLAUDE.md` | 局部地图·成员清单 | 文件增删/接口变更 |
+| L3 | 文件头部注释 | INPUT/OUTPUT/POS 契约 | 依赖/导出/职责变更 |
+
+### L3 头部模板
+
+```typescript
+/**
+ * [INPUT]: 依赖 {模块/文件} 的 {具体能力}
+ * [OUTPUT]: 对外提供 {导出的函数/组件/类型}
+ * [POS]: {所属模块} 的 {角色定位}
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+```
+
+### 强制回环
+
+```
+代码修改 → L3 检查 → L2 检查 → L1 检查 → 任务完成
+```
+
+**死罪**:
+- 改代码不检查文档 → 回滚
+- 发现 L3 缺失却继续 → 停止并补充
+- 删文件不更新 L2 → 系统不一致
+- 新模块不创建 L2 → 文档黑洞
+
+---
+
+## 已知技术债务
+
+### ✅ 已修复 (2025-01-03)
+
+| 问题 | 修复方案 | 状态 |
+|------|----------|------|
+| lib.rs 6384行 | 模块化拆分为 commands/ + services/ | ✅ 804行 |
+| 路径遍历攻击 | security.rs + validate_decoded_path() | ✅ |
+| 命令注入风险 | security.rs + validate_version() | ✅ |
+
+### 🟡 待改进
+
+| 问题 | 位置 | 优先级 |
+|------|------|--------|
+| 文件写入非原子化 | workspace_store.rs | P1 |
+| UTF-8 字符串切割风险 | diagnostics.rs | P1 |
+| .unwrap() 残留 | 多处 | P2 |
+| 前端两套导航系统 | src/components/ | P2 |
+| 测试覆盖率 0% | 全局 | P2 |
+
+详见: `ENGINEERING_ROADMAP.md`
+
+---
+
+## 前后端通信
+
+```typescript
+// 前端调用
+import { invoke } from '@tauri-apps/api/core';
+const projects = await invoke<Project[]>('list_projects');
+```
+
+```rust
+// 后端定义 (在 commands/*.rs 中)
+#[tauri::command]
+pub fn list_projects() -> Result<Vec<Project>, String> { ... }
+
+// 在 commands/mod.rs 中导出
+pub use projects::list_projects;
+
+// 在 lib.rs 中注册
+tauri::generate_handler![
+    commands::list_projects,
+    // ...
+]
+```
+
+---
+
+## 目录职责速查
+
+| 目录 | 职责 | 关键文件 |
+|------|------|----------|
+| `src/views/` | 14 个功能页面 | Chat, Workspace, Commands... |
+| `src/components/ui/` | shadcn/ui 封装 | button, dialog, tabs... |
+| `src/components/shared/` | 业务通用组件 | NavSidebar, SidebarLayout... |
+| `src/store/atoms/` | Jotai 状态 | app, chat, workspace... |
+| `src-tauri/src/commands/` | Tauri 命令 | 11 个功能模块 |
+| `src-tauri/src/services/` | 后台服务 | search.rs (全文搜索) |
+
+---
+
+## L2 文档索引
+
+| 模块 | L2 文档 | 状态 |
+|------|---------|------|
+| src-tauri/ | `src-tauri/CLAUDE.md` | ✅ 已更新 |
+| src/ | `src/CLAUDE.md` | ⚠️ 待创建 |
+
+---
+
+*Keep the map aligned with the terrain, or the terrain will be lost.*
+
+[PROTOCOL]: 架构变更时必须同步更新此文档

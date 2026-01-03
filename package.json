@@ -10,7 +10,13 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "bump": "node scripts/bump-version.cjs",
-    "version": "changeset version && node scripts/sync-cargo-version.cjs"
+    "version": "changeset version && node scripts/sync-cargo-version.cjs",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "clippy": "cd src-tauri && cargo clippy",
+    "audit": "pnpm audit && cd src-tauri && cargo audit",
+    "prepare": "husky"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

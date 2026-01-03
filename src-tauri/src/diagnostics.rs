@@ -1,9 +1,10 @@
+use crate::security;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TechStack {
@@ -247,9 +248,10 @@ fn scan_for_leaked_secrets(project_path: &Path) -> Vec<LeakedSecret> {
     let mut secrets = Vec::new();
 
     // 敏感信息正则 - 匹配硬编码的 API keys, tokens, passwords
+    // 使用 expect 因为正则是静态定义的，编译失败说明是代码 bug
     let secret_pattern = Regex::new(
         r#"(?i)(api[_-]?key|secret|password|token|credential|private[_-]?key)\s*[=:]\s*['"]([\w\-_./+=]{8,})['""]"#
-    ).unwrap();
+    ).expect("secret_pattern regex should compile");
 
     // 要扫描的文件扩展名
     let scan_extensions = ["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "rb"];
@@ -319,9 +321,11 @@ fn scan_directory(
                             continue;
                         }
 
-                        // 脱敏预览
-                        let preview = if value.len() > 8 {
-                            format!("{}...{}", &value[..4], &value[value.len()-4..])
+                        // 脱敏预览 (使用 chars() 避免 UTF-8 边界切割)
+                        let preview = if value.chars().count() > 8 {
+                            let first4: String = value.chars().take(4).collect();
+                            let last4: String = value.chars().rev().take(4).collect::<String>().chars().rev().collect();
+                            format!("{}...{}", first4, last4)
                         } else {
                             "****".to_string()
                         };
@@ -495,8 +499,9 @@ pub fn add_missing_keys_to_env(project_path: &str, keys: Vec<String>) -> Result<
         added_count += 1;
     }
 
-    // 写入文件
-    fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
+    // 写入文件 (atomic)
+    security::atomic_write_string(&PathBuf::from(&env_path), &env_content)
+        .map_err(|e| e.to_string())?;
 
     Ok(added_count)
 }

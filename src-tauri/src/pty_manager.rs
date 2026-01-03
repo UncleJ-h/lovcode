@@ -53,12 +53,17 @@ fn load_scrollback_from_disk(id: &str) -> Option<VecDeque<u8>> {
 
 /// Save scrollback to disk
 fn save_scrollback_to_disk(id: &str, data: &VecDeque<u8>) -> Result<(), String> {
+    use crate::security;
+
     let dir = get_scrollback_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("Failed to create scrollback dir: {}", e))?;
 
     let path = get_scrollback_path(id);
     let bytes: Vec<u8> = data.iter().copied().collect();
-    fs::write(&path, &bytes).map_err(|e| format!("Failed to write scrollback: {}", e))?;
+
+    // 使用原子化写入，防止崩溃时数据损坏
+    security::atomic_write(&path, &bytes)
+        .map_err(|e| format!("Failed to write scrollback: {}", e))?;
     Ok(())
 }
 
@@ -300,7 +305,7 @@ fn read_loop(
             Err(e) => {
                 // Check if we should still be running
                 if running.load(Ordering::Relaxed) {
-                    eprintln!("PTY read error for {}: {}", id, e);
+                    tracing::warn!(pty_id = %id, error = %e, "PTY read error");
                     let _ = app_handle.emit("pty-exit", PtyExitEvent { id: id.clone() });
                 }
                 break;

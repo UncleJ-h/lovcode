@@ -61,7 +61,7 @@ pub fn notify_feature_complete(
     };
 
     if let Err(e) = app_handle.emit("feature-complete", event) {
-        eprintln!("Failed to emit feature-complete event: {}", e);
+        tracing::error!(error = %e, "Failed to emit feature-complete event");
     }
 }
 

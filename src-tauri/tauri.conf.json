@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https:; font-src 'self' data:; connect-src 'self' https://api.github.com https://registry.npmjs.org https://claude.ai ipc: tauri:",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

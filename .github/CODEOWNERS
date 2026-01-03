@@ -1,0 +1,12 @@
+# Default owners for everything
+* @UncleJ-h
+
+# Rust backend
+/src-tauri/ @UncleJ-h
+
+# Frontend
+/src/ @UncleJ-h
+
+# Critical files that need extra review
+/src-tauri/src/lib.rs @UncleJ-h
+/src-tauri/src/pty_manager.rs @UncleJ-h

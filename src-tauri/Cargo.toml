@@ -36,8 +36,35 @@ portable-pty = "0.9"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 arboard = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"
+
+# 更好的错误处理
+[dependencies.thiserror]
+version = "1"
+
+[dependencies.anyhow]
+version = "1"
+
+# Clippy 严格模式 - 逐步启用
+[lints.clippy]
+# Phase 1: 代码质量组 (优先级设置)
+pedantic = { level = "warn", priority = -1 }  # 更严格的代码风格
+nursery = { level = "warn", priority = -1 }   # 实验性检查
+
+# Phase 2: 警告级别 (覆盖组设置)
+unwrap_used = "warn"           # 禁止 .unwrap()
+expect_used = "warn"           # 警告 .expect()
+panic = "warn"                 # 警告显式 panic!
+
+# 允许的例外
+too_many_lines = "allow"       # 暂时允许长函数 (重构后移除)
+module_name_repetitions = "allow"
+
+[lints.rust]
+unsafe_code = "warn"           # 警告 unsafe 代码
 
