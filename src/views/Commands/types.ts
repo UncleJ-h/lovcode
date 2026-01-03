@@ -1,4 +1,4 @@
-export type CommandSortKey = "usage" | "name";
+export type CommandSortKey = "usage" | "name" | "modified";
 export type SortDirection = "asc" | "desc";
 
 export type FolderNode = {
