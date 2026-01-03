@@ -335,4 +335,206 @@ mod tests {
         assert_eq!(shell_escape("foo | bar"), "'foo | bar'");
         assert_eq!(shell_escape("foo; bar"), "'foo; bar'");
     }
+
+    // ========================================================================
+    // 路径辅助函数测试
+    // ========================================================================
+
+    #[test]
+    fn test_safe_home_dir() {
+        // 应该能获取到用户主目录
+        let result = safe_home_dir();
+        assert!(result.is_ok());
+        let home = result.unwrap();
+        assert!(home.is_absolute());
+    }
+
+    #[test]
+    fn test_get_claude_dir() {
+        let result = get_claude_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.ends_with(".claude"));
+    }
+
+    #[test]
+    fn test_get_claude_dir_or_fallback() {
+        let path = get_claude_dir_or_fallback();
+        // 应该包含 .claude
+        assert!(path.to_string_lossy().contains(".claude"));
+    }
+
+    #[test]
+    fn test_get_claude_json_path() {
+        let result = get_claude_json_path();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().ends_with(".claude.json"));
+    }
+
+    #[test]
+    fn test_get_lovstudio_dir() {
+        let result = get_lovstudio_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains(".lovstudio"));
+        assert!(path.to_string_lossy().contains("lovcode"));
+    }
+
+    #[test]
+    fn test_validate_and_escape_cwd_valid() {
+        // 有效路径应该通过验证并被转义
+        let result = validate_and_escape_cwd("/Users/test/project");
+        assert!(result.is_ok());
+        let escaped = result.unwrap();
+        assert!(escaped.starts_with('\''));
+        assert!(escaped.ends_with('\''));
+    }
+
+    #[test]
+    fn test_validate_and_escape_cwd_invalid() {
+        // 无效路径应该失败
+        assert!(validate_and_escape_cwd("../etc/passwd").is_err());
+        assert!(validate_and_escape_cwd("/etc/passwd").is_err());
+    }
+
+    // ========================================================================
+    // 原子写入测试
+    // ========================================================================
+
+    #[test]
+    fn test_atomic_write_creates_file() {
+        use std::fs;
+
+        // 创建临时目录
+        let temp_dir = std::env::temp_dir().join("lovcode_test_atomic");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let test_file = temp_dir.join("test_atomic_write.txt");
+        let content = "Hello, atomic world!";
+
+        // 确保文件不存在
+        let _ = fs::remove_file(&test_file);
+
+        // 执行原子写入
+        let result = atomic_write_string(&test_file, content);
+        assert!(result.is_ok(), "atomic_write_string should succeed");
+
+        // 验证文件内容
+        let read_content = fs::read_to_string(&test_file).unwrap();
+        assert_eq!(read_content, content);
+
+        // 清理
+        let _ = fs::remove_file(&test_file);
+        let _ = fs::remove_dir(&temp_dir);
+    }
+
+    #[test]
+    fn test_atomic_write_overwrites_existing() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join("lovcode_test_atomic2");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let test_file = temp_dir.join("test_atomic_overwrite.txt");
+
+        // 创建初始文件
+        fs::write(&test_file, "original content").unwrap();
+
+        // 原子覆盖
+        let new_content = "new content";
+        let result = atomic_write_string(&test_file, new_content);
+        assert!(result.is_ok());
+
+        // 验证新内容
+        let read_content = fs::read_to_string(&test_file).unwrap();
+        assert_eq!(read_content, new_content);
+
+        // 清理
+        let _ = fs::remove_file(&test_file);
+        let _ = fs::remove_dir(&temp_dir);
+    }
+
+    #[test]
+    fn test_atomic_write_binary() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join("lovcode_test_atomic3");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let test_file = temp_dir.join("test_atomic_binary.bin");
+        let binary_content: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE];
+
+        let result = atomic_write(&test_file, &binary_content);
+        assert!(result.is_ok());
+
+        let read_content = fs::read(&test_file).unwrap();
+        assert_eq!(read_content, binary_content);
+
+        // 清理
+        let _ = fs::remove_file(&test_file);
+        let _ = fs::remove_dir(&temp_dir);
+    }
+
+    #[test]
+    fn test_atomic_write_no_temp_file_left() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join("lovcode_test_atomic4");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let test_file = temp_dir.join("test_no_temp.txt");
+
+        // 写入文件
+        let _ = atomic_write_string(&test_file, "content");
+
+        // 检查目录中没有 .tmp 文件残留
+        let entries: Vec<_> = fs::read_dir(&temp_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+
+        assert!(entries.is_empty(), "No .tmp files should remain");
+
+        // 清理
+        let _ = fs::remove_file(&test_file);
+        let _ = fs::remove_dir(&temp_dir);
+    }
+
+    // ========================================================================
+    // 边界情况测试
+    // ========================================================================
+
+    #[test]
+    fn test_shell_escape_empty_string() {
+        assert_eq!(shell_escape(""), "''");
+    }
+
+    #[test]
+    fn test_shell_escape_unicode() {
+        // Unicode 字符应该被保护
+        assert_eq!(shell_escape("你好世界"), "'你好世界'");
+        assert_eq!(shell_escape("émoji 🎉"), "'émoji 🎉'");
+    }
+
+    #[test]
+    fn test_validate_path_unicode() {
+        // 包含 Unicode 的有效路径
+        let result = validate_decoded_path("/Users/测试用户/项目");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_version_edge_cases() {
+        // 边界版本号
+        assert!(validate_version("0.0.0").is_ok());
+        assert!(validate_version("999.999.999").is_ok());
+        assert!(validate_version("1.2.3-rc.1.2.3").is_ok());
+
+        // 无效边界
+        assert!(validate_version("1.2.3.4").is_err()); // 四段版本号
+        assert!(validate_version("v1.2.3").is_err());  // v 前缀
+        assert!(validate_version("1.2.3-").is_err());  // 悬空连字符
+    }
 }

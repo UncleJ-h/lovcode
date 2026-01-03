@@ -523,3 +523,292 @@ pub fn get_pending_reviews() -> Result<Vec<(String, String, String)>, String> {
 
     Ok(reviews)
 }
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // Type and Enum Tests
+    // ========================================================================
+
+    #[test]
+    fn test_feature_status_default() {
+        let status = FeatureStatus::default();
+        assert_eq!(status, FeatureStatus::Pending);
+    }
+
+    #[test]
+    fn test_feature_status_variants() {
+        // Test that all variants can be used
+        let _pending = FeatureStatus::Pending;
+        let _running = FeatureStatus::Running;
+        let _completed = FeatureStatus::Completed;
+        let _needs_review = FeatureStatus::NeedsReview;
+    }
+
+    #[test]
+    fn test_workspace_data_default() {
+        let data = WorkspaceData::default();
+        assert!(data.projects.is_empty());
+        assert!(data.active_project_id.is_none());
+        assert!(data.feature_counter.is_none());
+    }
+
+    // ========================================================================
+    // Serialization Tests
+    // ========================================================================
+
+    #[test]
+    fn test_feature_status_serialization() {
+        let status = FeatureStatus::NeedsReview;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"needs-review\"");
+
+        let deserialized: FeatureStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, FeatureStatus::NeedsReview);
+    }
+
+    #[test]
+    fn test_session_state_serialization() {
+        let session = SessionState {
+            id: "sess-1".to_string(),
+            pty_id: "pty-1".to_string(),
+            title: "Terminal 1".to_string(),
+            command: Some("npm run dev".to_string()),
+        };
+
+        let json = serde_json::to_string(&session).unwrap();
+        let deserialized: SessionState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, "sess-1");
+        assert_eq!(deserialized.pty_id, "pty-1");
+        assert_eq!(deserialized.title, "Terminal 1");
+        assert_eq!(deserialized.command, Some("npm run dev".to_string()));
+    }
+
+    #[test]
+    fn test_panel_state_serialization() {
+        let panel = PanelState {
+            id: "panel-1".to_string(),
+            sessions: vec![],
+            active_session_id: "".to_string(),
+            is_shared: false,
+            cwd: "/home/user/project".to_string(),
+        };
+
+        let json = serde_json::to_string(&panel).unwrap();
+        let deserialized: PanelState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, "panel-1");
+        assert!(!deserialized.is_shared);
+        assert_eq!(deserialized.cwd, "/home/user/project");
+    }
+
+    #[test]
+    fn test_layout_node_panel_serialization() {
+        let node = LayoutNode::Panel {
+            panelId: "panel-1".to_string(),
+        };
+
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(json.contains("\"type\":\"panel\""));
+        assert!(json.contains("\"panelId\":\"panel-1\""));
+    }
+
+    #[test]
+    fn test_layout_node_split_serialization() {
+        let node = LayoutNode::Split {
+            direction: "horizontal".to_string(),
+            first: Box::new(LayoutNode::Panel {
+                panelId: "panel-1".to_string(),
+            }),
+            second: Box::new(LayoutNode::Panel {
+                panelId: "panel-2".to_string(),
+            }),
+        };
+
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(json.contains("\"type\":\"split\""));
+        assert!(json.contains("\"direction\":\"horizontal\""));
+    }
+
+    #[test]
+    fn test_feature_serialization() {
+        let feature = Feature {
+            id: "feat-1".to_string(),
+            seq: 1,
+            name: "Test Feature".to_string(),
+            description: Some("Description".to_string()),
+            status: FeatureStatus::Running,
+            pinned: Some(true),
+            archived: None,
+            archived_note: None,
+            git_branch: Some("feature/test".to_string()),
+            chat_session_id: None,
+            panels: vec![],
+            layout_direction: None,
+            layout: None,
+            created_at: 1234567890,
+        };
+
+        let json = serde_json::to_string(&feature).unwrap();
+        let deserialized: Feature = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, "feat-1");
+        assert_eq!(deserialized.seq, 1);
+        assert_eq!(deserialized.name, "Test Feature");
+        assert_eq!(deserialized.status, FeatureStatus::Running);
+        assert_eq!(deserialized.pinned, Some(true));
+        assert_eq!(deserialized.git_branch, Some("feature/test".to_string()));
+    }
+
+    #[test]
+    fn test_workspace_project_serialization() {
+        let project = WorkspaceProject {
+            id: "proj-1".to_string(),
+            name: "Test Project".to_string(),
+            path: "/home/user/project".to_string(),
+            archived: None,
+            features: vec![],
+            shared_panels: vec![],
+            active_feature_id: None,
+            feature_counter: Some(5),
+            created_at: 1234567890,
+        };
+
+        let json = serde_json::to_string(&project).unwrap();
+        let deserialized: WorkspaceProject = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, "proj-1");
+        assert_eq!(deserialized.name, "Test Project");
+        assert_eq!(deserialized.path, "/home/user/project");
+        assert_eq!(deserialized.feature_counter, Some(5));
+    }
+
+    #[test]
+    fn test_workspace_data_serialization() {
+        let data = WorkspaceData {
+            projects: vec![],
+            active_project_id: Some("proj-1".to_string()),
+            feature_counter: Some(10),
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+        let deserialized: WorkspaceData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.active_project_id, Some("proj-1".to_string()));
+        assert_eq!(deserialized.feature_counter, Some(10));
+    }
+
+    // ========================================================================
+    // Path Tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_workspace_path() {
+        let path = get_workspace_path();
+        let path_str = path.to_string_lossy();
+
+        // Should be in .lovstudio/lovcode/workspace.json
+        assert!(path_str.contains(".lovstudio"));
+        assert!(path_str.contains("lovcode"));
+        assert!(path_str.ends_with("workspace.json"));
+    }
+
+    // ========================================================================
+    // Optional Field Defaults
+    // ========================================================================
+
+    #[test]
+    fn test_feature_optional_fields_missing() {
+        // JSON with minimal fields
+        let json = r#"{
+            "id": "feat-1",
+            "name": "Test",
+            "status": "pending",
+            "panels": [],
+            "created_at": 0
+        }"#;
+
+        let feature: Feature = serde_json::from_str(json).unwrap();
+
+        // Verify defaults
+        assert_eq!(feature.seq, 0); // default
+        assert!(feature.description.is_none());
+        assert!(feature.pinned.is_none());
+        assert!(feature.archived.is_none());
+        assert!(feature.git_branch.is_none());
+        assert!(feature.layout.is_none());
+    }
+
+    #[test]
+    fn test_workspace_project_optional_fields_missing() {
+        let json = r#"{
+            "id": "proj-1",
+            "name": "Test",
+            "path": "/path",
+            "features": [],
+            "active_feature_id": null,
+            "created_at": 0
+        }"#;
+
+        let project: WorkspaceProject = serde_json::from_str(json).unwrap();
+
+        // Verify defaults
+        assert!(project.archived.is_none());
+        assert!(project.shared_panels.is_empty());
+        assert!(project.feature_counter.is_none());
+    }
+
+    // ========================================================================
+    // Clone Tests (important for the interior mutability pattern)
+    // ========================================================================
+
+    #[test]
+    fn test_feature_clone() {
+        let feature = Feature {
+            id: "feat-1".to_string(),
+            seq: 1,
+            name: "Test".to_string(),
+            description: None,
+            status: FeatureStatus::Pending,
+            pinned: None,
+            archived: None,
+            archived_note: None,
+            git_branch: None,
+            chat_session_id: None,
+            panels: vec![],
+            layout_direction: None,
+            layout: None,
+            created_at: 0,
+        };
+
+        let cloned = feature.clone();
+        assert_eq!(cloned.id, feature.id);
+        assert_eq!(cloned.seq, feature.seq);
+    }
+
+    #[test]
+    fn test_workspace_project_clone() {
+        let project = WorkspaceProject {
+            id: "proj-1".to_string(),
+            name: "Test".to_string(),
+            path: "/path".to_string(),
+            archived: None,
+            features: vec![],
+            shared_panels: vec![],
+            active_feature_id: None,
+            feature_counter: None,
+            created_at: 0,
+        };
+
+        let cloned = project.clone();
+        assert_eq!(cloned.id, project.id);
+        assert_eq!(cloned.path, project.path);
+    }
+}
