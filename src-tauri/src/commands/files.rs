@@ -388,15 +388,21 @@ pub fn delete_project_logo(_project_path: String, logo_path: String) -> Result<(
 // Shell Command Execution
 // ============================================================================
 
+/// Default timeout for shell commands (30 seconds)
+const SHELL_COMMAND_TIMEOUT_SECS: u64 = 30;
+
 /// Run a shell command in specified directory using login shell (async, non-blocking)
 ///
 /// # Security
 /// - cwd 参数经过路径验证，防止路径遍历攻击
 /// - cwd 参数经过 shell 转义，防止命令注入
 /// - 使用固定的 shell 路径，避免 $SHELL 环境变量劫持
+/// - 命令执行有 30 秒超时，防止无限挂起
 #[tauri::command]
 pub async fn exec_shell_command(command: String, cwd: String) -> Result<String, String> {
+    use std::time::Duration;
     use tokio::process::Command;
+    use tokio::time::timeout;
 
     // 安全验证：验证路径并转义 shell 特殊字符
     let escaped_cwd = security::validate_and_escape_cwd(&cwd)
@@ -409,11 +415,16 @@ pub async fn exec_shell_command(command: String, cwd: String) -> Result<String, 
     #[cfg(not(target_os = "macos"))]
     let shell = "/bin/bash";
 
-    let output = Command::new(shell)
-        .args(["-ilc", &format!("cd {} && {}", escaped_cwd, command)])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run command: {}", e))?;
+    // 使用超时机制，防止命令无限挂起
+    let output = timeout(
+        Duration::from_secs(SHELL_COMMAND_TIMEOUT_SECS),
+        Command::new(shell)
+            .args(["-ilc", &format!("cd {} && {}", escaped_cwd, command)])
+            .output(),
+    )
+    .await
+    .map_err(|_| format!("Command timed out after {} seconds", SHELL_COMMAND_TIMEOUT_SECS))?
+    .map_err(|e| format!("Failed to run command: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
