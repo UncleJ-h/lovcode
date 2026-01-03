@@ -7,12 +7,18 @@
 
 use crate::commands::list_local_commands;
 use crate::security;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+
+/// Static regex for extracting command names from XML-like tags
+static COMMAND_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"<command-name>(/[^<]+)</command-name>").expect("COMMAND_NAME_RE should compile")
+});
 
 // ============================================================================
 // Path Helper Functions
@@ -238,7 +244,6 @@ pub async fn get_annual_report_2025() -> Result<AnnualReport2025, String> {
         let mut total_messages = 0usize;
         let mut project_stats: HashMap<String, (String, usize, usize)> = HashMap::new(); // id -> (path, sessions, messages)
         let mut command_counts: HashMap<String, usize> = HashMap::new(); // command -> count (fallback)
-        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>").ok();
 
         if projects_dir.exists() {
             if let Ok(entries) = fs::read_dir(&projects_dir) {
@@ -303,19 +308,16 @@ pub async fn get_annual_report_2025() -> Result<AnnualReport2025, String> {
                                             msg_count += 1;
                                         }
                                         // Extract commands from assistant messages (for fallback stats)
-                                        if let Some(pattern) = &command_pattern {
-                                            if let Some(text) = parsed.get("message").and_then(|m| {
-                                                m.get("content").and_then(|c| c.as_str())
-                                            }) {
-                                                for cap in pattern.captures_iter(text) {
-                                                    if let Some(cmd_match) = cap.get(1) {
-                                                        let cmd = cmd_match
-                                                            .as_str()
-                                                            .trim_start_matches('/')
-                                                            .to_string();
-                                                        *command_counts.entry(cmd).or_insert(0) +=
-                                                            1;
-                                                    }
+                                        if let Some(text) = parsed.get("message").and_then(|m| {
+                                            m.get("content").and_then(|c| c.as_str())
+                                        }) {
+                                            for cap in COMMAND_NAME_RE.captures_iter(text) {
+                                                if let Some(cmd_match) = cap.get(1) {
+                                                    let cmd = cmd_match
+                                                        .as_str()
+                                                        .trim_start_matches('/')
+                                                        .to_string();
+                                                    *command_counts.entry(cmd).or_insert(0) += 1;
                                                 }
                                             }
                                         }
@@ -442,9 +444,6 @@ pub async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
             return Ok::<_, String>((stats, scanned));
         }
 
-        let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>")
-            .map_err(|e| e.to_string())?;
-
         for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
             let project_entry = project_entry.map_err(|e| e.to_string())?;
             let project_path = project_entry.path();
@@ -485,7 +484,7 @@ pub async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
                                 if line.contains("\"type\":\"queue-operation\"") {
                                     continue;
                                 }
-                                for cap in command_pattern.captures_iter(line) {
+                                for cap in COMMAND_NAME_RE.captures_iter(line) {
                                     if let Some(cmd_name) = cap.get(1) {
                                         // Remove leading "/" to match cmd.name format
                                         let name =

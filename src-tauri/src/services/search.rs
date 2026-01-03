@@ -10,6 +10,7 @@ use crate::security::get_claude_dir;
 use crate::types::{RawLine, SearchResult};
 
 use jieba_rs::Jieba;
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -27,6 +28,11 @@ use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
 
 /// Global jieba instance for Chinese tokenization
 static JIEBA: LazyLock<Jieba> = LazyLock::new(Jieba::new);
+
+/// Static regex for extracting command names from XML-like tags
+static COMMAND_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"<command-name>(/[^<]+)</command-name>").expect("COMMAND_NAME_RE should compile")
+});
 
 /// Global search index state
 static SEARCH_INDEX: Mutex<Option<SearchIndex>> = Mutex::new(None);
@@ -218,8 +224,6 @@ pub async fn build_search_index() -> Result<usize, String> {
 
         // === Command stats collection ===
         let mut command_stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
-        let command_pattern =
-            regex::Regex::new(r"<command-name>(/[^<]+)</command-name>").map_err(|e| e.to_string())?;
 
         // Build alias -> canonical name mapping
         let mut alias_map: HashMap<String, String> = HashMap::new();
@@ -356,7 +360,7 @@ pub async fn build_search_index() -> Result<usize, String> {
                                 if let Some(ts_str) = &parsed.timestamp {
                                     if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(ts_str) {
                                         let week_key = ts.format("%Y-W%V").to_string();
-                                        for cap in command_pattern.captures_iter(line) {
+                                        for cap in COMMAND_NAME_RE.captures_iter(line) {
                                             if let Some(cmd_match) = cap.get(1) {
                                                 let raw_name =
                                                     cmd_match.as_str().trim_start_matches('/').to_string();

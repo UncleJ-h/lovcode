@@ -5,6 +5,15 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+/// Static regex for detecting hardcoded secrets
+static SECRET_PATTERN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)(api[_-]?key|secret|password|token|credential|private[_-]?key)\s*[=:]\s*['"]([\w\-_./+=]{8,})['""]"#,
+    )
+    .expect("SECRET_PATTERN_RE should compile")
+});
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TechStack {
@@ -247,12 +256,6 @@ fn parse_env_keys(path: &Path) -> Vec<String> {
 fn scan_for_leaked_secrets(project_path: &Path) -> Vec<LeakedSecret> {
     let mut secrets = Vec::new();
 
-    // 敏感信息正则 - 匹配硬编码的 API keys, tokens, passwords
-    // 使用 expect 因为正则是静态定义的，编译失败说明是代码 bug
-    let secret_pattern = Regex::new(
-        r#"(?i)(api[_-]?key|secret|password|token|credential|private[_-]?key)\s*[=:]\s*['"]([\w\-_./+=]{8,})['""]"#
-    ).expect("secret_pattern regex should compile");
-
     // 要扫描的文件扩展名
     let scan_extensions = ["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "rb"];
 
@@ -264,7 +267,7 @@ fn scan_for_leaked_secrets(project_path: &Path) -> Vec<LeakedSecret> {
         "chunks", "ssr", "static",  // Next.js 内部目录
     ];
 
-    scan_directory(project_path, &secret_pattern, &scan_extensions, &exclude_dirs, &mut secrets);
+    scan_directory(project_path, &SECRET_PATTERN_RE, &scan_extensions, &exclude_dirs, &mut secrets);
 
     secrets
 }

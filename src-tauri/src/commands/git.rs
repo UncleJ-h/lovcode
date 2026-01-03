@@ -6,9 +6,11 @@
  */
 
 use crate::security;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::LazyLock;
 
 // ============================================================================
 // Types
@@ -36,12 +38,16 @@ pub struct CommitNote {
 // Helper Functions
 // ============================================================================
 
+/// Static regex for parsing conventional commit scopes
+static FEAT_SCOPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\w+\(([a-z0-9-]+)\):").expect("FEAT_SCOPE_RE should compile"));
+
 /// Parse feat name from conventional commit message
 /// e.g., "feat(auth-login): add login" -> Some("auth-login")
 fn parse_feat_from_message(message: &str) -> Option<String> {
     // Match patterns like: type(scope): message
-    let re = regex::Regex::new(r"^\w+\(([a-z0-9-]+)\):").ok()?;
-    re.captures(message)
+    FEAT_SCOPE_RE
+        .captures(message)
         .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
 }
 
